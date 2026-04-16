@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+dist/
+build/
+*.spec.bak
+.venv/
+.pytest_cache/
+*.egg-info/
+BudgetWhisper-mac/.venv/
+*.zip

@@ -1,0 +1,8 @@
+groq
+pynput
+pyautogui
+pyperclip
+pystray
+Pillow
+PyQt6
+pyaudio

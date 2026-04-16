@@ -1,0 +1,9 @@
+groq
+pyaudio
+pynput
+pyautogui
+pyperclip
+pystray
+Pillow
+customtkinter
+pyinstaller
