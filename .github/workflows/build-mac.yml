@@ -27,19 +27,42 @@ jobs:
           python -m pip install --upgrade pip
           pip install groq pynput pyautogui pyperclip pystray Pillow PyQt6 pyaudio pyinstaller
 
-      - name: Generate .icns icon from .ico
+      - name: Generate .icns icon
         run: |
           mkdir -p src/assets/icon.iconset
-          sips -z 16 16     src/assets/icon.ico --out src/assets/icon.iconset/icon_16x16.png
-          sips -z 32 32     src/assets/icon.ico --out src/assets/icon.iconset/icon_16x16@2x.png
-          sips -z 32 32     src/assets/icon.ico --out src/assets/icon.iconset/icon_32x32.png
-          sips -z 64 64     src/assets/icon.ico --out src/assets/icon.iconset/icon_32x32@2x.png
-          sips -z 128 128   src/assets/icon.ico --out src/assets/icon.iconset/icon_128x128.png
-          sips -z 256 256   src/assets/icon.ico --out src/assets/icon.iconset/icon_128x128@2x.png
-          sips -z 256 256   src/assets/icon.ico --out src/assets/icon.iconset/icon_256x256.png
-          sips -z 512 512   src/assets/icon.ico --out src/assets/icon.iconset/icon_256x256@2x.png
-          sips -z 512 512   src/assets/icon.ico --out src/assets/icon.iconset/icon_512x512.png
-          sips -z 1024 1024 src/assets/icon.ico --out src/assets/icon.iconset/icon_512x512@2x.png
+          # Use Python + Pillow to generate all sizes from the ICO (extracts largest frame)
+          python3 - <<'EOF'
+          from PIL import Image
+          src = Image.open("src/assets/icon.ico")
+          # ICO may have multiple frames - pick the largest
+          try:
+              sizes = src.info.get("sizes") or [src.size]
+              largest = max(sizes, key=lambda s: s[0] * s[1])
+              src.size = largest
+              src.load()
+          except Exception:
+              pass
+          src = src.convert("RGBA")
+          # If the source is smaller than 1024, upscale with LANCZOS (best quality)
+          if src.width < 1024:
+              src = src.resize((1024, 1024), Image.LANCZOS)
+          targets = [
+              (16, "icon_16x16.png"),
+              (32, "icon_16x16@2x.png"),
+              (32, "icon_32x32.png"),
+              (64, "icon_32x32@2x.png"),
+              (128, "icon_128x128.png"),
+              (256, "icon_128x128@2x.png"),
+              (256, "icon_256x256.png"),
+              (512, "icon_256x256@2x.png"),
+              (512, "icon_512x512.png"),
+              (1024, "icon_512x512@2x.png"),
+          ]
+          for size, name in targets:
+              img = src.resize((size, size), Image.LANCZOS)
+              img.save(f"src/assets/icon.iconset/{name}", "PNG")
+              print(f"Generated {name} ({size}x{size})")
+          EOF
           iconutil -c icns src/assets/icon.iconset -o src/assets/icon.icns
 
       - name: Build .app with PyInstaller
