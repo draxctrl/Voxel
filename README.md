@@ -146,10 +146,14 @@ python -m src.main
 
 ## 🍎 Install (macOS)
 
+### Option 1: DMG
+Download **`Voxel.dmg`** from [📦 Releases](../../releases), open it, drag **Voxel** into your Applications folder, done.
+
+### Option 2: From source
 ```bash
 git clone https://github.com/draxctrl/Voxel.git
 cd Voxel/BudgetWhisper-mac
-chmod +x setup_mac.sh
+chmod +x setup_mac.sh run.sh
 bash setup_mac.sh
 bash run.sh
 ```
