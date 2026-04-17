@@ -6,6 +6,9 @@ on:
       - 'v*'
   workflow_dispatch:  # allow manual trigger from GitHub UI
 
+permissions:
+  contents: write
+
 jobs:
   build-macos:
     runs-on: macos-latest
@@ -97,5 +100,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/Voxel.dmg
+          fail_on_unmatched_files: true
+          generate_release_notes: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
