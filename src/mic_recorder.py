@@ -36,7 +36,18 @@ class MicRecorder:
         self._device_index = device_index
         self._actual_rate: int = TARGET_SAMPLE_RATE
         self._lock = threading.Lock()
-        self._start_stream()
+        # Try to start stream, but don't crash app if it fails
+        try:
+            self._start_stream()
+        except Exception as e:
+            logger.warning("Initial mic stream failed: %s. Will retry with default device.", e)
+            # Fall back to default device
+            if self._device_index is not None:
+                self._device_index = None
+                try:
+                    self._start_stream()
+                except Exception as e2:
+                    logger.error("Default mic stream also failed: %s. Will retry on first record.", e2)
 
     @property
     def is_recording(self) -> bool:
@@ -61,11 +72,10 @@ class MicRecorder:
                 kwargs = dict(
                     input_format=pyaudio.paInt16,
                     input_channels=CHANNELS,
-                    input_sample_rate=rate,
                 )
                 if self._device_index is not None:
                     kwargs["input_device"] = self._device_index
-                if pa.is_format_supported(**kwargs):
+                if pa.is_format_supported(rate, **kwargs):
                     return rate
             except Exception:
                 continue
@@ -129,6 +139,16 @@ class MicRecorder:
         """Mark recording as active. The preroll buffer is already capturing."""
         if self._recording:
             return
+
+        # If the stream failed to open during init, retry now
+        if self._stream is None or not self._stream_running:
+            logger.info("Stream not running, attempting to open now")
+            try:
+                self._start_stream()
+            except Exception as e:
+                logger.error("Failed to open mic stream on demand: %s", e)
+                return
+
         with self._lock:
             # Seed active frames with the preroll buffer so no words are lost
             self._active_frames = list(self._preroll)
