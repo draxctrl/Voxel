@@ -12,6 +12,8 @@ from src.ui_pyqt6.theme import (
     palette_for,
     build_qss,
     load_fonts,
+    apply_theme,
+    current_palette,
 )
 from src.main import _get_assets_dir as _assets_dir
 
@@ -132,3 +134,47 @@ class TestFontLoading:
     def test_is_safe_to_call_twice(self, qapp):
         assert load_fonts(_assets_dir()) is True
         assert load_fonts(_assets_dir()) is True
+
+
+class TestNoDuplicateTheme:
+    """The spec's anti-goal: two stylesheet copies that drift apart."""
+
+    def test_settings_ui_has_no_private_theme_copy(self):
+        import src.ui_pyqt6.settings_ui as s
+        for name in ("_QSS", "_BG", "_CARD", "_ArrowComboBox", "_TickCheckBox"):
+            assert not hasattr(s, name), f"{name} duplicates theme.py"
+
+    def test_no_window_defines_its_own_scrollbar_rules(self):
+        import inspect
+        import src.ui_pyqt6.history_window as h
+        import src.ui_pyqt6.stats_window as st
+        import src.ui_pyqt6.settings_ui as se
+        for mod in (h, st, se):
+            assert "QScrollBar" not in inspect.getsource(mod), (
+                f"{mod.__name__} styles scrollbars itself; theme.py owns that"
+            )
+
+
+class TestApplyTheme:
+    def test_sets_the_application_stylesheet(self, qapp):
+        name = apply_theme(qapp, "light")
+        assert name == "light"
+        assert LIGHT["card"] in qapp.styleSheet()
+
+    def test_current_palette_follows_the_applied_theme(self, qapp):
+        apply_theme(qapp, "light")
+        assert current_palette() is LIGHT
+        apply_theme(qapp, "dark")
+        assert current_palette() is DARK
+
+    def test_theme_change_replaces_the_old_palette_entirely(self, qapp):
+        """A half-light, half-dark window is worse than either."""
+        apply_theme(qapp, "dark")
+        apply_theme(qapp, "light")
+        sheet = qapp.styleSheet()
+        assert LIGHT["card"] in sheet
+        assert DARK["card"] not in sheet
+
+    def test_defaults_to_the_system_theme_when_none_given(self, qapp, monkeypatch):
+        monkeypatch.setattr("src.ui_pyqt6.theme.detect_system_theme", lambda: "light")
+        assert apply_theme(qapp) == "light"

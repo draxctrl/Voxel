@@ -156,7 +156,6 @@ class HistoryWindow(QWidget):
         self.setWindowTitle("Voxel - History")
         self.resize(650, 550)
         self.setMinimumSize(400, 300)
-        self.setStyleSheet(QSS)
 
         # Icon
         icon_path = self._resolve_asset("icon.ico")
@@ -214,33 +213,6 @@ class HistoryWindow(QWidget):
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
         self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        # Apply dark scrollbar style directly
-        _scrollbar_style = f"""
-            QScrollArea {{ background: {BG}; border: none; }}
-            QScrollBar:vertical {{
-                background: {BG};
-                width: 8px;
-                border-radius: 4px;
-                margin: 0;
-            }}
-            QScrollBar::handle:vertical {{
-                background: {BORDER};
-                border-radius: 4px;
-                min-height: 20px;
-            }}
-            QScrollBar::handle:vertical:hover {{
-                background: {SUBTLE};
-            }}
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
-                height: 0px;
-                background: none;
-            }}
-            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
-                background: none;
-            }}
-        """
-        self._scroll.setStyleSheet(_scrollbar_style)
-        self._scroll.verticalScrollBar().setStyleSheet(_scrollbar_style)
         root.addWidget(self._scroll, stretch=1)
 
         # Container inside scroll

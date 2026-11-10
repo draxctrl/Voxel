@@ -93,7 +93,6 @@ class StatsWindow(QWidget):
     def _build_ui(self) -> None:
         self.setWindowTitle("Voxel - Statistics")
         self.setFixedSize(450, 400)
-        self.setStyleSheet(QSS)
         self.setWindowFlags(
             Qt.WindowType.Window
             | Qt.WindowType.WindowCloseButtonHint
@@ -129,7 +128,6 @@ class StatsWindow(QWidget):
         # Scrollable stat cards
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("QScrollArea { border: none; }")
         root.addWidget(scroll, stretch=1)
 
         scroll_content = QWidget()

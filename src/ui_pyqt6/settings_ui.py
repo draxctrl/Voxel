@@ -28,22 +28,13 @@ from PyQt6.QtWidgets import (
 )
 from pynput import keyboard as pynput_keyboard
 
+# One source for colour and chrome. settings_ui used to carry its own copy of
+# the palette, the stylesheet and these widgets; two copies is what let the
+# scrollbars and dropdowns drift apart.
+from src.ui_pyqt6.theme import ArrowComboBox, IOSSwitch, current_palette
+
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Colour palette
-# ---------------------------------------------------------------------------
-_BG = "#0f0f0f"
-_CARD = "#1a1a1a"
-_BORDER = "#2a2a2a"
-_INPUT_BG = "#111111"
-_TEXT = "#e8e8e8"
-_SUBTLE = "#777777"
-_ACCENT = "#6366f1"
-_ACCENT_HOVER = "#818cf8"
-_SUCCESS = "#22c55e"
-_ERROR = "#ef4444"
-_WARNING = "#f59e0b"
 
 # Dictation Mode subtitle, and what it says when Offline mode makes it inert.
 _MODE_SUBTITLE = "How your speech is cleaned up"
@@ -60,197 +51,6 @@ def _is_modifier_only_hotkey(hotkey: str) -> bool:
     except Exception:
         return False
 
-# ---------------------------------------------------------------------------
-# QSS stylesheet
-# ---------------------------------------------------------------------------
-_QSS = f"""
-QWidget {{
-    background-color: {_BG};
-    color: {_TEXT};
-    font-family: "Segoe UI";
-    font-size: 13px;
-}}
-
-QLabel {{
-    background: transparent;
-    color: {_TEXT};
-}}
-
-QLabel#subtitle {{
-    color: {_SUBTLE};
-    font-size: 11px;
-}}
-
-QLabel#section_title {{
-    color: {_TEXT};
-    font-size: 13px;
-    font-weight: bold;
-}}
-
-QLabel#section_sub {{
-    color: {_SUBTLE};
-    font-size: 11px;
-}}
-
-QLabel#status_label {{
-    color: {_SUBTLE};
-    font-size: 11px;
-}}
-
-QLabel#app_title {{
-    color: {_TEXT};
-    font-size: 22px;
-    font-weight: bold;
-}}
-
-QLineEdit {{
-    background-color: {_INPUT_BG};
-    color: {_TEXT};
-    border: 1px solid {_BORDER};
-    border-radius: 8px;
-    padding: 6px 10px;
-    font-family: "Segoe UI";
-    font-size: 13px;
-    selection-background-color: {_ACCENT};
-}}
-
-QLineEdit:focus {{
-    border: 1px solid {_ACCENT};
-}}
-
-QLineEdit[readOnly="true"] {{
-    color: {_SUBTLE};
-    font-family: "Consolas";
-}}
-
-QComboBox {{
-    background-color: {_INPUT_BG};
-    color: {_TEXT};
-    border: 1px solid {_BORDER};
-    border-radius: 8px;
-    padding: 6px 10px;
-    font-family: "Segoe UI";
-    font-size: 13px;
-    min-width: 120px;
-}}
-
-QComboBox:focus {{
-    border: 1px solid {_ACCENT};
-}}
-
-QComboBox::drop-down {{
-    subcontrol-origin: padding;
-    subcontrol-position: center right;
-    width: 28px;
-    border: none;
-    background: {_INPUT_BG};
-    border-top-right-radius: 8px;
-    border-bottom-right-radius: 8px;
-}}
-
-QComboBox::down-arrow {{
-    image: none;
-    border: none;
-    width: 0px;
-    height: 0px;
-}}
-
-QComboBox QAbstractItemView {{
-    background-color: {_CARD};
-    color: {_TEXT};
-    border: 1px solid {_BORDER};
-    border-radius: 6px;
-    selection-background-color: {_ACCENT};
-    selection-color: white;
-    outline: none;
-    padding: 4px;
-}}
-
-QComboBox QAbstractItemView::item {{
-    padding: 6px 10px;
-    min-height: 24px;
-}}
-
-QComboBox QAbstractItemView::item:hover {{
-    background-color: {_ACCENT};
-    color: white;
-}}
-
-QComboBox QAbstractItemView::item:selected {{
-    background-color: {_ACCENT};
-    color: white;
-}}
-
-QComboBox QAbstractItemView::indicator {{
-    width: 0px;
-    height: 0px;
-}}
-
-QPushButton {{
-    background-color: {_ACCENT};
-    color: {_TEXT};
-    border: none;
-    border-radius: 8px;
-    padding: 6px 18px;
-    font-family: "Segoe UI";
-    font-size: 12px;
-    font-weight: bold;
-    min-height: 28px;
-}}
-
-QPushButton:hover {{
-    background-color: {_ACCENT_HOVER};
-}}
-
-QPushButton:pressed {{
-    background-color: {_ACCENT};
-}}
-
-QPushButton#save_btn {{
-    font-size: 14px;
-    border-radius: 10px;
-    min-height: 42px;
-    padding: 10px 18px;
-}}
-
-QPushButton#capture_btn_recording {{
-    background-color: {_ERROR};
-}}
-
-QPushButton#capture_btn_recording:hover {{
-    background-color: #f87171;
-}}
-
-QCheckBox {{
-    color: {_SUBTLE};
-    font-size: 12px;
-    spacing: 8px;
-}}
-
-QCheckBox::indicator {{
-    width: 18px;
-    height: 18px;
-    border: 1px solid {_BORDER};
-    border-radius: 4px;
-    background-color: {_INPUT_BG};
-}}
-
-QCheckBox::indicator:checked {{
-    background-color: {_ACCENT};
-    border-color: {_ACCENT};
-}}
-
-QCheckBox::indicator:checked:hover {{
-    background-color: {_ACCENT_HOVER};
-}}
-
-QFrame#divider {{
-    background-color: {_BORDER};
-    max-height: 1px;
-    min-height: 1px;
-    border: none;
-}}
-"""
 
 
 # ---------------------------------------------------------------------------
@@ -275,65 +75,6 @@ class _ValidateWorker(QObject):
                 self.result.emit(False, "Invalid API key")
         except Exception as exc:  # noqa: BLE001
             self.result.emit(False, str(exc))
-
-
-# ---------------------------------------------------------------------------
-# Custom checkbox with visible tick mark
-# ---------------------------------------------------------------------------
-class _ArrowComboBox(QComboBox):
-    """QComboBox that draws a visible chevron arrow and has a wide popup."""
-
-    def showPopup(self):
-        # Calculate width needed for the longest item
-        fm = self.fontMetrics()
-        max_w = self.width()
-        for i in range(self.count()):
-            text_w = fm.horizontalAdvance(self.itemText(i)) + 80
-            if text_w > max_w:
-                max_w = text_w
-        self.view().setMinimumWidth(max_w)
-        # Show popup first so the window exists
-        super().showPopup()
-        # Then resize the actual popup window container
-        popup_window = self.view().window()
-        if popup_window:
-            popup_window.resize(max_w, popup_window.height())
-
-    def paintEvent(self, event):
-        super().paintEvent(event)
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        pen = QPen(QColor(0x77, 0x77, 0x77), 1.8)
-        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
-        painter.setPen(pen)
-        # Draw chevron ▾ on the right side
-        x = self.width() - 18
-        y = self.height() // 2
-        painter.drawLine(x - 4, y - 2, x, y + 2)
-        painter.drawLine(x, y + 2, x + 4, y - 2)
-        painter.end()
-
-
-class _TickCheckBox(QCheckBox):
-    """QCheckBox that draws a white checkmark when checked."""
-
-    def paintEvent(self, event):
-        super().paintEvent(event)
-        if self.isChecked():
-            painter = QPainter(self)
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            # Draw tick over the indicator area
-            indicator_x = 1
-            indicator_y = (self.height() - 18) // 2
-            pen = QPen(QColor(255, 255, 255), 2.5)
-            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-            pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
-            painter.setPen(pen)
-            # Checkmark path: ✓
-            painter.drawLine(indicator_x + 4, indicator_y + 9, indicator_x + 7, indicator_y + 13)
-            painter.drawLine(indicator_x + 7, indicator_y + 13, indicator_x + 14, indicator_y + 5)
-            painter.end()
 
 
 # ---------------------------------------------------------------------------
@@ -421,7 +162,6 @@ class SettingsWindow(QWidget):
     def _build_ui(self) -> None:
         self.setWindowTitle("Voxel")
         self.setFixedSize(540, 820)
-        self.setStyleSheet(_QSS)
         self.setWindowFlags(
             Qt.WindowType.Window
             | Qt.WindowType.WindowCloseButtonHint
@@ -452,11 +192,11 @@ class SettingsWindow(QWidget):
 
         # Header buttons
         _small_btn = (
-            f"background-color: {_BORDER}; color: {_SUBTLE}; "
+            f"background-color: {current_palette()['separator']}; color: {current_palette()['secondary']}; "
             f"border-radius: 4px; font-size: 11px; "
             f"padding: 3px 10px; min-height: 0; min-width: 0;"
         )
-        _small_btn_hover = f"background-color: #333; color: {_TEXT};"
+        _small_btn_hover = f"background-color: #333; color: {current_palette()['text']};"
 
         history_btn = QPushButton("History")
         history_btn.setStyleSheet(f"QPushButton {{ {_small_btn} }} QPushButton:hover {{ {_small_btn_hover} }}")
@@ -478,8 +218,8 @@ class SettingsWindow(QWidget):
         help_btn.setToolTip("Help & FAQ")
         help_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         help_btn.setStyleSheet(
-            f"QLabel {{ background-color: transparent; color: {_ACCENT}; "
-            f"border: 1.5px solid {_ACCENT}; border-radius: 12px; "
+            f"QLabel {{ background-color: transparent; color: {current_palette()['accent']}; "
+            f"border: 1.5px solid {current_palette()['accent']}; border-radius: 12px; "
             f"font-size: 13px; font-weight: bold; }}"
             f"QLabel:hover {{ background-color: #1e1e3e; }}"
         )
@@ -552,7 +292,7 @@ class SettingsWindow(QWidget):
         root_layout.addWidget(activation_sub)
         root_layout.addSpacing(2)
 
-        self._activation_combo = _ArrowComboBox()
+        self._activation_combo = ArrowComboBox()
         self._activation_combo.setFixedHeight(36)
         for label, value in (
             ("Hold to talk", "hold"),
@@ -580,7 +320,7 @@ class SettingsWindow(QWidget):
         profile_row = QHBoxLayout()
         profile_row.setSpacing(8)
 
-        self._profile_combo = _ArrowComboBox()
+        self._profile_combo = ArrowComboBox()
         self._profile_combo.setFixedHeight(36)
         self._populate_profiles()
         profile_row.addWidget(self._profile_combo, stretch=1)
@@ -597,7 +337,7 @@ class SettingsWindow(QWidget):
         # ── Microphone ────────────────────────────────────────────────────
         self._add_section(root_layout, "Microphone", "Select your recording device")
 
-        self._mic_combo = _ArrowComboBox()
+        self._mic_combo = ArrowComboBox()
         self._mic_combo.setFixedHeight(36)
         self._populate_mics()
         root_layout.addWidget(self._mic_combo)
@@ -615,7 +355,7 @@ class SettingsWindow(QWidget):
         lang_title.setObjectName("section_title")
         lang_col.addWidget(lang_title)
 
-        self._lang_combo = _ArrowComboBox()
+        self._lang_combo = ArrowComboBox()
         _LANGUAGES = [
             ("auto", "Auto-detect"),
             ("en", "English"),
@@ -646,32 +386,32 @@ class SettingsWindow(QWidget):
         check_col.setSpacing(10)
         check_col.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        self._mute_check = _TickCheckBox("Mute sounds")
+        self._mute_check = IOSSwitch("Mute sounds")
         self._mute_check.setChecked(self._config.get("mute_sound", False))
         self._mute_check.setToolTip("Disable the chime sound that plays after you stop recording")
         check_col.addWidget(self._mute_check)
 
-        self._autostart_check = _TickCheckBox("Run at login")
+        self._autostart_check = IOSSwitch("Run at login")
         self._autostart_check.setChecked(self._config.get("auto_start", False))
         self._autostart_check.setToolTip("Automatically launch Voxel when Windows starts")
         check_col.addWidget(self._autostart_check)
 
-        self._always_copy_check = _TickCheckBox("Always copy to clipboard")
+        self._always_copy_check = IOSSwitch("Always copy to clipboard")
         self._always_copy_check.setChecked(self._config.get("always_copy", False))
         self._always_copy_check.setToolTip("Keep transcribed text on your clipboard after pasting\n(instead of restoring your previous clipboard)")
         check_col.addWidget(self._always_copy_check)
 
-        self._clipboard_notice_check = _TickCheckBox("Show clipboard notice")
+        self._clipboard_notice_check = IOSSwitch("Show clipboard notice")
         self._clipboard_notice_check.setChecked(self._config.get("clipboard_notice", True))
         self._clipboard_notice_check.setToolTip("Show a notification when text is copied to clipboard\ninstead of pasted (e.g. when desktop is focused)")
         check_col.addWidget(self._clipboard_notice_check)
 
-        self._auto_profile_check = _TickCheckBox("Auto-switch profile per app")
+        self._auto_profile_check = IOSSwitch("Auto-switch profile per app")
         self._auto_profile_check.setChecked(self._config.get("auto_profile", False))
         self._auto_profile_check.setToolTip("Automatically switch dictation mode based on the focused app.\nConfigure app mappings in the config file.")
         check_col.addWidget(self._auto_profile_check)
 
-        self._offline_check = _TickCheckBox("Offline mode")
+        self._offline_check = IOSSwitch("Offline mode")
         self._offline_check.setChecked(self._config.get("offline_mode", False))
         self._offline_check.setToolTip("Use local Whisper model instead of Groq API.\nNo internet needed, but slower and no AI text cleanup.\nModel downloads on first use (~145MB for base).")
         # Offline transcription skips LLM cleanup entirely, so Dictation Mode has
@@ -705,7 +445,7 @@ class SettingsWindow(QWidget):
         footer_row.addStretch(1)
 
         version_label = QLabel("v2.0")
-        version_label.setStyleSheet(f"color: {_SUBTLE}; font-size: 11px;")
+        version_label.setStyleSheet(f"color: {current_palette()['secondary']}; font-size: 11px;")
         footer_row.addWidget(version_label, 0, Qt.AlignmentFlag.AlignRight)
 
         root_layout.addLayout(footer_row)
@@ -832,7 +572,6 @@ class SettingsWindow(QWidget):
         dlg = QDialog(self)
         dlg.setWindowTitle("Voice Commands")
         dlg.setFixedSize(500, 450)
-        dlg.setStyleSheet(_QSS)
 
         icon_path = self._resolve_asset("icon.ico")
         if icon_path and os.path.exists(icon_path):
@@ -870,7 +609,7 @@ class SettingsWindow(QWidget):
             row.addWidget(t, stretch=1)
 
             arrow = QLabel("->")
-            arrow.setStyleSheet(f"color: {_SUBTLE}; font-size: 14px;")
+            arrow.setStyleSheet(f"color: {current_palette()['secondary']}; font-size: 14px;")
             arrow.setFixedWidth(24)
             arrow.setAlignment(Qt.AlignmentFlag.AlignCenter)
             row.addWidget(arrow)
@@ -882,7 +621,7 @@ class SettingsWindow(QWidget):
 
             del_btn = QPushButton("X")
             del_btn.setFixedSize(32, 32)
-            del_btn.setStyleSheet(f"background-color: {_BORDER}; font-size: 12px; min-height: 0;")
+            del_btn.setStyleSheet(f"background-color: {current_palette()['separator']}; font-size: 12px; min-height: 0;")
             entry_pair = (t, e)
             self._cmd_entries.append(entry_pair)
             del_btn.clicked.connect(lambda: self._remove_cmd_row(entry_pair, row_widget))
@@ -899,7 +638,7 @@ class SettingsWindow(QWidget):
         btn_row = QHBoxLayout()
         add_btn = QPushButton("+ Add Command")
         add_btn.setFixedHeight(36)
-        add_btn.setStyleSheet(f"background-color: {_BORDER}; font-size: 12px;")
+        add_btn.setStyleSheet(f"background-color: {current_palette()['separator']}; font-size: 12px;")
         add_btn.clicked.connect(lambda: add_cmd_row())
         btn_row.addWidget(add_btn)
 
@@ -981,7 +720,7 @@ class SettingsWindow(QWidget):
             self._set_status(
                 "⚠ A modifier-only hotkey can't toggle — kept Hold to talk. "
                 "Add a normal key (e.g. Ctrl+Shift+Space) to use toggle.",
-                _WARNING,
+                current_palette()["warning"],
             )
         self._config.set("activation_mode", activation)
         # Name is authoritative; the index is only a hint, since PyAudio
@@ -1020,10 +759,10 @@ class SettingsWindow(QWidget):
             return
         key = self._api_key_edit.text().strip()
         if not key:
-            self._set_status("Please enter an API key", _WARNING)
+            self._set_status("Please enter an API key", current_palette()["warning"])
             return
 
-        self._set_status("Validating…", _SUBTLE)
+        self._set_status("Validating…", current_palette()["secondary"])
 
         # Run in a QThread so the GUI stays responsive
         self._validate_thread = QThread()
@@ -1035,7 +774,7 @@ class SettingsWindow(QWidget):
         self._validate_thread.start()
 
     def _on_validate_result(self, success: bool, message: str) -> None:
-        colour = _SUCCESS if success else _ERROR
+        colour = current_palette()["success"] if success else current_palette()["error"]
         prefix = "\u2713" if success else "\u2717"
         self._set_status(f"{prefix}  {message}", colour)
 
@@ -1051,7 +790,7 @@ class SettingsWindow(QWidget):
 
     def show_warning(self, text: str) -> None:
         """Show a warning in the status line (e.g. the chosen mic is missing)."""
-        self._set_status(text, _WARNING)
+        self._set_status(text, current_palette()["warning"])
 
     def _set_status(self, text: str, colour: str) -> None:
         self._status_label.setText(text)
@@ -1078,9 +817,9 @@ class SettingsWindow(QWidget):
         btn.setText("Press…")
         btn.setObjectName("capture_btn_recording")
         btn.setStyleSheet(
-            f"background-color: {_ERROR}; border-radius: 8px; "
+            f"background-color: {current_palette()['error']}; border-radius: 8px; "
             f"font-family: 'Segoe UI'; font-size: 12px; font-weight: bold; "
-            f"color: {_TEXT}; min-height: 28px; padding: 6px 18px;"
+            f"color: #FFFFFF; min-height: 28px; padding: 6px 18px;"
         )
         edit.setText("Press your hotkey combo…")
 
@@ -1217,7 +956,6 @@ class SettingsWindow(QWidget):
         dlg = QDialog(self)
         dlg.setWindowTitle("Voxel - Help & FAQ")
         dlg.setFixedSize(460, 520)
-        dlg.setStyleSheet(_QSS)
 
         layout = QVBoxLayout(dlg)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -1361,17 +1099,17 @@ class SettingsWindow(QWidget):
 
         for title, body in _help_sections:
             t = QLabel(title)
-            t.setStyleSheet(f"color: {_TEXT}; font-size: 14px; font-weight: bold;")
+            t.setStyleSheet(f"color: {current_palette()['text']}; font-size: 14px; font-weight: 600;")
             t.setWordWrap(True)
             clayout.addWidget(t)
 
             b = QLabel(body)
-            b.setStyleSheet(f"color: {_SUBTLE}; font-size: 12px;")
+            b.setStyleSheet(f"color: {current_palette()['secondary']}; font-size: 12px;")
             b.setWordWrap(True)
             clayout.addWidget(b)
 
             sep = QFrame()
-            sep.setStyleSheet(f"background-color: {_BORDER}; max-height: 1px;")
+            sep.setStyleSheet(f"background-color: {current_palette()['separator']}; max-height: 1px;")
             sep.setFrameShape(QFrame.Shape.HLine)
             clayout.addWidget(sep)
 

@@ -389,6 +389,39 @@ QToolTip {{
 """
 
 
+#: Palette currently applied, so dialogs built later use the live colours
+#: instead of whatever was captured when a module was first imported.
+_current_palette: dict[str, str] = DARK
+
+
+def current_palette() -> dict[str, str]:
+    """The palette in force right now."""
+    return _current_palette
+
+
+def apply_theme(app, theme_name: str | None = None) -> str:
+    """Style the whole application. Returns the theme name applied.
+
+    The stylesheet goes on the QApplication rather than each window, so every
+    window — and every dialog created afterwards — inherits it, and a theme
+    change restyles all of them at once rather than leaving some half-converted.
+    """
+    global _current_palette
+
+    name = theme_name or detect_system_theme()
+    palette = palette_for(name)
+    _current_palette = palette
+    app.setStyleSheet(build_qss(palette))
+
+    # Repaint hand-drawn controls, which read tokens rather than QSS.
+    for widget in app.allWidgets():
+        if isinstance(widget, IOSSwitch):
+            widget.set_palette(palette)
+
+    logger.info("Applied %s theme", name)
+    return name
+
+
 # ---------------------------------------------------------------------------
 # Legacy flat-dark constants (removed once every window reads a palette)
 # ---------------------------------------------------------------------------

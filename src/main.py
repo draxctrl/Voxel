@@ -23,7 +23,7 @@ from src.history import HistoryStore
 from src.profiles import ProfileManager, resolve_effective_profile
 from src.voice_commands import VoiceCommandProcessor
 from src.app_detector import AppDetector
-from src.ui_pyqt6.theme import load_fonts
+from src.ui_pyqt6.theme import load_fonts, apply_theme
 from src.ui_pyqt6.settings_ui import SettingsWindow
 from src.ui_pyqt6.recording_overlay import RecordingOverlay
 from src.ui_pyqt6.splash import SplashScreen
@@ -73,6 +73,11 @@ class VoxelApp:
         # The stylesheet falls back to Segoe UI if this fails.
         assets_dir = _get_assets_dir()
         load_fonts(assets_dir)
+
+        # One stylesheet on the QApplication, so every window and every dialog
+        # created later inherits it and a theme change restyles all of them.
+        apply_theme(self._qapp)
+        self._watch_system_theme()
 
         # Set app icon globally
         ico_path = os.path.join(assets_dir, "icon.ico")
@@ -326,6 +331,20 @@ class VoxelApp:
             logger.info("Loading offline Whisper model...")
             self._offline_transcriber.load_model()
         return self._offline_transcriber.transcribe(audio_bytes, language=language)
+
+    def _watch_system_theme(self) -> None:
+        """Re-apply the theme when Windows switches between light and dark.
+
+        colorSchemeChanged arrived in Qt 6.5; if it isn't there the app simply
+        keeps the theme it started with rather than failing to start.
+        """
+        try:
+            from PyQt6.QtGui import QGuiApplication
+            QGuiApplication.styleHints().colorSchemeChanged.connect(
+                lambda _scheme: apply_theme(self._qapp)
+            )
+        except (AttributeError, TypeError) as e:
+            logger.info("Live theme switching unavailable on this Qt build: %s", e)
 
     def _report_mic_fallback(self) -> None:
         """Say which microphone is actually in use, and warn if it isn't the chosen one.
