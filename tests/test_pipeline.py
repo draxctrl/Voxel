@@ -84,3 +84,16 @@ class TestMicFallbackStillRecords:
         recorder.close()
 
         assert audio is not None and len(audio) > 0
+
+
+class TestUndoHotkeyRemoved:
+    """The undo hotkey sent a blind Ctrl+Z to whatever had focus. It's gone."""
+
+    def test_undo_hotkey_config_key_is_gone(self):
+        from src.config import DEFAULT_CONFIG
+        assert "undo_hotkey" not in DEFAULT_CONFIG
+
+    def test_undo_handler_is_gone(self):
+        from src.main import VoxelApp
+        assert not hasattr(VoxelApp, "_on_undo_press")
+        assert not hasattr(VoxelApp, "_start_undo_listener")

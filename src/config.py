@@ -15,7 +15,6 @@ DEFAULT_CONFIG = {
     "voice_commands": {},
     "active_profile": "default",
     "profiles": {},
-    "undo_hotkey": "<ctrl>+<shift>+z",
     "auto_profile": False,
     "app_profiles": {},
     # Microphone is identified by name: PyAudio indices renumber whenever audio

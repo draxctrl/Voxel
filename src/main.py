@@ -7,8 +7,6 @@ import threading
 import time
 from logging.handlers import RotatingFileHandler
 
-import pyautogui
-import pyperclip
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import QTimer
 from PyQt6.QtGui import QIcon
@@ -18,7 +16,7 @@ from src.config import Config
 from src.mic_recorder import MicRecorder
 from src.transcriber import Transcriber
 from src.text_cleaner import TextCleaner
-from src.text_injector import TextInjector, InjectionResult
+from src.text_injector import TextInjector
 from src.hotkey_listener import HotkeyListener
 from src.tray_app import TrayApp
 from src.history import HistoryStore
@@ -35,7 +33,6 @@ MIN_AUDIO_DURATION = 0.5
 MAX_RECORDING_DURATION = 120
 RECORDING_WARNING_TIME = 105
 SILENCE_RMS_THRESHOLD = 200
-UNDO_STALE_SECONDS = 60
 
 
 def _setup_logging() -> None:
@@ -113,11 +110,6 @@ class VoxelApp:
             always_copy=self._config.get("always_copy", False),
         )
 
-        # Undo state
-        self._last_injection: InjectionResult | None = None
-        self._last_injection_time: float = 0.0
-        self._undo_lock = threading.Lock()
-
         # Tray
         self._tray = TrayApp(
             assets_dir=assets_dir,
@@ -129,7 +121,6 @@ class VoxelApp:
 
         # Hotkey listeners
         self._hotkey_listener: HotkeyListener | None = None
-        self._undo_listener: HotkeyListener | None = None
         self._recording_start_time: float = 0.0
         self._max_record_timer: threading.Timer | None = None
         self._running = True
@@ -178,24 +169,6 @@ class VoxelApp:
             on_release=self._on_hotkey_release,
         )
         self._hotkey_listener.start()
-
-        # Start undo hotkey listener
-        self._start_undo_listener()
-
-    def _start_undo_listener(self) -> None:
-        if self._undo_listener:
-            self._undo_listener.stop()
-
-        undo_hotkey = self._config.get("undo_hotkey", "<ctrl>+<shift>+z")
-        if undo_hotkey:
-            self._undo_listener = HotkeyListener(
-                hotkey_str=undo_hotkey,
-                on_press=self._on_undo_press,
-                on_release=lambda: None,
-                min_hold_duration=0.0,
-            )
-            self._undo_listener.start()
-            logger.info("Undo hotkey listener started: %s", undo_hotkey)
 
     def _on_hotkey_press(self) -> None:
         if self._recorder.is_recording:
@@ -274,9 +247,6 @@ class VoxelApp:
                 logger.info("Voice command matched: %s", raw_text.strip()[:50])
                 result = self._injector.inject(expansion)
                 self._history.add(raw_text, expansion, language or "auto", duration, profile="voice_command")
-                with self._undo_lock:
-                    self._last_injection = result
-                    self._last_injection_time = time.time()
                 self._overlay.hide()
                 self._tray.set_state("idle")
                 return
@@ -316,11 +286,6 @@ class VoxelApp:
             # Inject text
             result = self._injector.inject(cleaned_text)
 
-            # Store for undo
-            with self._undo_lock:
-                self._last_injection = result
-                self._last_injection_time = time.time()
-
             # Use captured target state (checked at hotkey press, before overlay)
             was_desktop = getattr(self, '_target_is_desktop', False)
             should_show_notice = (not result.pasted or was_desktop) and self._config.get("clipboard_notice", True)
@@ -337,66 +302,6 @@ class VoxelApp:
             self._tray.set_state("error")
             self._overlay.hide()
             threading.Timer(3.0, lambda: self._tray.set_state("idle")).start()
-
-    def _on_undo_press(self) -> None:
-        """Undo the last dictation paste."""
-        with self._undo_lock:
-            last = self._last_injection
-            if last is None:
-                logger.debug("Nothing to undo")
-                return
-
-            age = time.time() - self._last_injection_time
-            if age > UNDO_STALE_SECONDS:
-                logger.debug("Undo too stale (%.0fs ago)", age)
-                self._last_injection = None
-                return
-
-            self._last_injection = None
-
-        logger.info("Undoing last dictation")
-
-        if last.pasted:
-            undo_modifier = "command" if platform.system() == "Darwin" else "ctrl"
-            pyautogui.hotkey(undo_modifier, "z")
-            time.sleep(0.05)
-
-        # Restore clipboard
-        try:
-            pyperclip.copy(last.old_clipboard)
-        except Exception as e:
-            logger.warning("Failed to restore clipboard on undo: %s", e)
-
-    def _report_mic_fallback(self) -> None:
-        """Say which microphone is actually in use, and warn if it isn't the chosen one.
-
-        Falling back silently is what made a renumbered device look like a broken
-        app, so the fallback is always visible: on the recording overlay, where
-        the user is looking while they talk, and in Settings.
-        """
-        active = getattr(self._recorder, "active_device_name", None)
-        missing = getattr(self._recorder, "requested_device_missing", False)
-
-        if missing:
-            wanted = self._config.get("mic_device_name") or "Saved microphone"
-            using = active or "default microphone"
-            logger.warning("Microphone %r not found; using %r", wanted, using)
-            message = f"⚠ {wanted} not found — using {using}"
-        elif active:
-            message = active
-        else:
-            return
-
-        try:
-            self._overlay.set_mic_text(message)
-        except Exception as e:
-            logger.debug("Could not set overlay mic text: %s", e)
-
-        if missing:
-            try:
-                self._settings_window.show_warning(message)
-            except Exception as e:
-                logger.debug("Could not show mic warning in settings: %s", e)
 
     def _transcribe_offline(self, audio_bytes: bytes, language: str | None) -> str:
         """Transcribe using local Whisper model."""
@@ -477,9 +382,6 @@ class VoxelApp:
 
         if self._hotkey_listener:
             self._hotkey_listener.stop()
-
-        if self._undo_listener:
-            self._undo_listener.stop()
 
         self._tray.stop()
         self._settings_window._quitting = True

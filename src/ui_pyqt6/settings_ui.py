@@ -522,28 +522,6 @@ class SettingsWindow(QWidget):
 
         root_layout.addLayout(hotkey_row)
 
-        root_layout.addSpacing(4)
-
-        # ── Undo Hotkey ──────────────────────────────────────────────────
-        undo_sub = QLabel("Undo hotkey")
-        undo_sub.setObjectName("section_sub")
-        root_layout.addWidget(undo_sub)
-        root_layout.addSpacing(2)
-
-        undo_row = QHBoxLayout()
-        undo_row.setSpacing(8)
-        self._undo_hotkey_edit = QLineEdit()
-        self._undo_hotkey_edit.setReadOnly(True)
-        self._undo_hotkey_edit.setText(self._config.get("undo_hotkey", "<ctrl>+<shift>+z"))
-        self._undo_hotkey_edit.setFixedHeight(36)
-        undo_row.addWidget(self._undo_hotkey_edit, stretch=1)
-
-        self._undo_capture_btn = QPushButton("Record")
-        self._undo_capture_btn.setFixedSize(80, 36)
-        self._undo_capture_btn.clicked.connect(lambda: self._toggle_hotkey_capture(target="undo"))
-        undo_row.addWidget(self._undo_capture_btn)
-        root_layout.addLayout(undo_row)
-
         root_layout.addSpacing(8)
 
         # ── Dictation Mode ───────────────────────────────────────────────
@@ -914,7 +892,6 @@ class SettingsWindow(QWidget):
         self._config.set("api_key", self._api_key_edit.text().strip())
         self._config.set("language", self._lang_combo.currentData())
         self._config.set("hotkey", self._hotkey_edit.text().strip())
-        self._config.set("undo_hotkey", self._undo_hotkey_edit.text().strip())
         # Name is authoritative; the index is only a hint, since PyAudio
         # renumbers devices whenever audio hardware changes.
         self._config.set("mic_device_name", self._mic_combo.currentText() or None)
@@ -989,13 +966,8 @@ class SettingsWindow(QWidget):
         self._capture_target = target
         self._captured_keys = set()
 
-        # Update the appropriate button and field
-        if target == "undo":
-            btn = self._undo_capture_btn
-            edit = self._undo_hotkey_edit
-        else:
-            btn = self._capture_btn
-            edit = self._hotkey_edit
+        btn = self._capture_btn
+        edit = self._hotkey_edit
 
         btn.setText("Press…")
         btn.setObjectName("capture_btn_recording")
@@ -1036,11 +1008,7 @@ class SettingsWindow(QWidget):
 
     def _finish_capture(self, hotkey: str) -> None:
         """Slot — runs in the GUI thread."""
-        target = getattr(self, '_capture_target', 'main')
-        if target == "undo":
-            self._undo_hotkey_edit.setText(hotkey)
-        else:
-            self._hotkey_edit.setText(hotkey)
+        self._hotkey_edit.setText(hotkey)
         self._stop_hotkey_capture()
 
     def _stop_hotkey_capture(self) -> None:
@@ -1052,13 +1020,9 @@ class SettingsWindow(QWidget):
                 pass
             self._capture_listener = None
 
-        # Restore both buttons
         self._capture_btn.setText("Record")
         self._capture_btn.setObjectName("")
         self._capture_btn.setStyleSheet("")
-        self._undo_capture_btn.setText("Record")
-        self._undo_capture_btn.setObjectName("")
-        self._undo_capture_btn.setStyleSheet("")
 
     # ------------------------------------------------------------------
     # Key → pynput string helpers
@@ -1224,11 +1188,6 @@ class SettingsWindow(QWidget):
              "instead of cleaning up your speech.\n\n"
              "Placeholders: {{date}}, {{time}}, {{datetime}}, {{clipboard}}\n\n"
              "Set up commands via the Voice Commands button in settings."),
-
-            ("Undo Last Dictation",
-             "Press the undo hotkey (default: Ctrl+Shift+Z) to undo the last paste.\n\n"
-             "This sends Ctrl+Z to the focused app and restores your previous clipboard.\n"
-             "Works within 60 seconds of the last dictation."),
 
             ("Dictation History",
              "All your dictations are saved automatically.\n\n"
