@@ -47,6 +47,8 @@ class TestTextInjector:
         mock_pyperclip.paste.return_value = ""
 
         injector = TextInjector(chime_path="assets/chime.wav")
-        injector.inject("text")
+        # inject() no longer plays the chime; main.py calls play_chime()
+        # separately on hotkey release so the sound lands before transcription.
+        injector.play_chime()
 
         mock_winsound.PlaySound.assert_called_once()

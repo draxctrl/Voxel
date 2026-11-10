@@ -35,7 +35,10 @@ class TestProfileManagerBuiltins:
         for pid, profile in ProfileManager.BUILTIN_PROFILES.items():
             assert "name" in profile
             assert "prompt" in profile
-            assert "{raw_transcript}" in profile["prompt"]
+            # The raw profile is a sentinel that skips the LLM entirely, so it
+            # has no transcript placeholder to substitute into.
+            if profile["prompt"] != "__RAW__":
+                assert "{raw_transcript}" in profile["prompt"]
 
     def test_is_builtin_true_for_builtins(self):
         pm = ProfileManager(_make_config())
@@ -146,6 +149,6 @@ class TestCustomProfiles:
         config = _make_config({"profiles": {"extra": {"name": "Extra", "prompt": "p"}}})
         pm = ProfileManager(config)
         profiles = pm.list_profiles()
-        assert len(profiles) == 6  # 5 builtins + 1 custom
+        assert len(profiles) == len(ProfileManager.BUILTIN_PROFILES) + 1
         assert "extra" in profiles
         assert "default" in profiles

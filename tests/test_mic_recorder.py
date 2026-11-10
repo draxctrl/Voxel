@@ -4,18 +4,23 @@ import wave
 import pytest
 from unittest.mock import MagicMock, patch, call
 
-from src.mic_recorder import MicRecorder, SAMPLE_RATE, CHANNELS, SAMPLE_WIDTH
+from src.mic_recorder import MicRecorder, TARGET_SAMPLE_RATE, CHANNELS, SAMPLE_WIDTH
 
 
 class TestMicRecorder:
     def test_constants(self):
-        assert SAMPLE_RATE == 16000
+        assert TARGET_SAMPLE_RATE == 16000
         assert CHANNELS == 1
         assert SAMPLE_WIDTH == 2
 
     @patch("src.mic_recorder.pyaudio.PyAudio")
     def test_start_opens_stream(self, mock_pyaudio_cls):
         mock_pa = MagicMock()
+        # Must be a real dict: int(MagicMock()) is 1, which would make
+        # _find_supported_rate choose a 1 Hz stream.
+        mock_pa.get_default_input_device_info.return_value = {
+            "index": 0, "maxInputChannels": 1, "defaultSampleRate": 16000,
+        }
         mock_pyaudio_cls.return_value = mock_pa
 
         recorder = MicRecorder()
@@ -35,6 +40,9 @@ class TestMicRecorder:
         mock_stream.read.return_value = b"\x00" * (1024 * 2)
         mock_stream.is_active.return_value = True
         mock_pa.open.return_value = mock_stream
+        mock_pa.get_default_input_device_info.return_value = {
+            "index": 0, "maxInputChannels": 1, "defaultSampleRate": 16000,
+        }
         mock_pyaudio_cls.return_value = mock_pa
 
         recorder = MicRecorder()
