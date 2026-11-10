@@ -30,6 +30,31 @@ _IS_WIN = platform.system() == "Windows"
 # Windows class names that indicate no real app is focused
 _NO_TEXT_CLASSES = {"Progman", "WorkerW", "Shell_TrayWnd", "Shell_SecondaryTrayWnd"}
 
+# Shell surfaces that look like text fields but execute what you type into them.
+# The Windows 11 Start menu and search are XAML island windows, so their class
+# names are generic ("Windows.UI.Core.CoreWindow") and shared with real apps —
+# the owning process is the reliable signal. Pasting here made Windows try to
+# run the dictation as a command.
+_NO_TEXT_PROCESSES = {
+    "startmenuexperiencehost",
+    "searchhost",
+    "searchapp",
+    "searchui",
+    "shellexperiencehost",
+}
+
+
+def _is_shell_surface(process_name: str | None, window_class: str | None) -> bool:
+    """True when the focused window is a shell surface, not a text field.
+
+    Kept pure so both signals can be tested without a live desktop.
+    """
+    if window_class and window_class in _NO_TEXT_CLASSES:
+        return True
+    if process_name and process_name.lower() in _NO_TEXT_PROCESSES:
+        return True
+    return False
+
 
 def _play_sound(path: str) -> None:
     """Play a sound file cross-platform."""
@@ -42,7 +67,13 @@ def _play_sound(path: str) -> None:
 
 
 def _is_desktop_focused() -> bool:
-    """Check if the desktop, taskbar, or no real window is focused (Windows only)."""
+    """True when the focused window can't accept pasted text (Windows only).
+
+    Covers the desktop and taskbar, and the Start menu and search, which would
+    otherwise *execute* the pasted text. Any failure returns False so a
+    detection problem degrades to pasting rather than silently swallowing
+    dictation.
+    """
     if not _IS_WIN:
         return False
     try:
@@ -50,9 +81,18 @@ def _is_desktop_focused() -> bool:
         hwnd = user32.GetForegroundWindow()
         if not hwnd:
             return True
+
         buf = ctypes.create_unicode_buffer(256)
         user32.GetClassNameW(hwnd, buf, 256)
-        return buf.value in _NO_TEXT_CLASSES
+        window_class = buf.value
+
+        try:
+            from src.app_detector import AppDetector
+            process_name = AppDetector().get_active_app()
+        except Exception:
+            process_name = None
+
+        return _is_shell_surface(process_name, window_class)
     except Exception:
         return False
 
