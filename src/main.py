@@ -20,7 +20,7 @@ from src.text_injector import TextInjector
 from src.hotkey_listener import HotkeyListener
 from src.tray_app import TrayApp
 from src.history import HistoryStore
-from src.profiles import ProfileManager
+from src.profiles import ProfileManager, resolve_effective_profile
 from src.voice_commands import VoiceCommandProcessor
 from src.app_detector import AppDetector
 from src.ui_pyqt6.settings_ui import SettingsWindow
@@ -252,35 +252,27 @@ class VoxelApp:
                 return
 
             # Per-app profile switching (using captured app from press time)
-            if self._config.get("auto_profile", False):
-                app_name = getattr(self, '_target_app', 'unknown')
-                app_profiles = self._config.get("app_profiles", {})
-                if app_name in app_profiles:
-                    profile_id = app_profiles[app_name]
-                    profiles = self._profiles.list_profiles()
-                    if profile_id in profiles:
-                        prompt = profiles[profile_id]["prompt"]
-                        if self._cleaner:
-                            self._cleaner.set_prompt(prompt)
-                        logger.info("Auto-switched to profile '%s' for app '%s'", profile_id, app_name)
-                else:
-                    logger.debug("No profile mapping for app '%s'", app_name)
+            # One effective profile per dictation drives everything below: the
+            # prompt, the raw check and the name recorded in history. Resolving
+            # it once is what stops a per-app switch sticking to later dictations.
+            profile_id, profile = self._resolve_profile(getattr(self, "_target_app", None))
+            logger.info("Dictation using profile '%s'", profile_id)
 
-            active_profile = self._profiles.get_active_profile()
-            is_raw_profile = active_profile.get("prompt") == "__RAW__"
+            is_raw_profile = profile.get("prompt") == "__RAW__"
 
             if is_raw_profile or use_offline:
                 # Skip LLM cleanup: use verbatim transcription
                 cleaned_text = raw_text.strip()
             elif self._cleaner:
+                self._cleaner.set_prompt(profile["prompt"])
                 cleaned_text = self._cleaner.clean(raw_text)
             else:
                 cleaned_text = raw_text.strip()
 
-            # Save to history
+            # Save to history under the mode that actually ran
             self._history.add(
                 raw_text, cleaned_text, language, duration,
-                profile=active_profile.get("name", "Default"),
+                profile=profile.get("name", profile_id),
             )
 
             # Inject text
@@ -313,6 +305,16 @@ class VoxelApp:
             logger.info("Loading offline Whisper model...")
             self._offline_transcriber.load_model()
         return self._offline_transcriber.transcribe(audio_bytes, language=language)
+
+    def _resolve_profile(self, app_name: str | None) -> tuple[str, dict]:
+        """Which dictation mode this utterance runs under."""
+        return resolve_effective_profile(
+            profiles=self._profiles.list_profiles(),
+            active_id=self._config.get("active_profile", ProfileManager.DEFAULT_PROFILE_ID),
+            app_profiles=self._config.get("app_profiles", {}) or {},
+            auto_profile=self._config.get("auto_profile", False),
+            app_name=app_name,
+        )
 
     def _show_settings(self) -> None:
         self._settings_window.show()

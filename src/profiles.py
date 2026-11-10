@@ -79,6 +79,40 @@ Do NOT do this:
 Dictated text: "{{raw_transcript}}\""""
 
 
+def resolve_effective_profile(
+    profiles: dict[str, dict],
+    active_id: str,
+    app_profiles: dict[str, str],
+    auto_profile: bool,
+    app_name: str | None,
+) -> tuple[str, dict]:
+    """Decide which profile a single dictation runs under.
+
+    Resolved once per dictation and used for everything downstream — the prompt,
+    the raw check, and the name written to history. Previously the per-app
+    switch mutated the cleaner's prompt in place with no path back, so one
+    mapped app silently changed the mode for every dictation after it.
+
+    Falls back to *active_id*, then to the default mode, whenever a mapping or
+    the active id names a profile that no longer exists.
+    """
+    if auto_profile and app_name:
+        mapped_id = (app_profiles or {}).get(app_name)
+        if mapped_id and mapped_id in profiles:
+            return mapped_id, profiles[mapped_id]
+        if mapped_id:
+            logger.warning(
+                "App '%s' maps to profile '%s', which no longer exists", app_name, mapped_id
+            )
+
+    if active_id in profiles:
+        return active_id, profiles[active_id]
+
+    logger.warning("Active profile '%s' not found, falling back to default", active_id)
+    default_id = ProfileManager.DEFAULT_PROFILE_ID
+    return default_id, profiles.get(default_id, ProfileManager.BUILTIN_PROFILES[default_id])
+
+
 class ProfileManager:
     #: Mode used when nothing is chosen, and when an active profile goes missing.
     DEFAULT_PROFILE_ID = "grammar_tidy"

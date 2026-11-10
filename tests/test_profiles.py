@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import MagicMock
 
-from src.profiles import ProfileManager
+from src.profiles import ProfileManager, resolve_effective_profile
 
 
 def _make_config(data=None):
@@ -193,3 +193,65 @@ class TestProfileMigration:
 
     def test_unknown_custom_id_passes_through(self):
         assert ProfileManager.migrate_profile_id("my_custom") == "my_custom"
+
+
+class TestEffectiveProfileResolution:
+    """Which mode actually runs for a given dictation."""
+
+    PROFILES = {
+        "raw": {"name": "Raw (no cleanup)", "prompt": "__RAW__"},
+        "grammar_tidy": {"name": "Grammar + tidy up", "prompt": "tidy {raw_transcript}"},
+        "professional": {"name": "Professional Email", "prompt": "pro {raw_transcript}"},
+    }
+
+    def test_auto_profile_off_always_uses_active_profile(self):
+        pid, prof = resolve_effective_profile(
+            self.PROFILES, "grammar_tidy", {"Code.exe": "professional"},
+            auto_profile=False, app_name="Code.exe",
+        )
+        assert pid == "grammar_tidy"
+
+    def test_mapped_app_wins_when_auto_profile_on(self):
+        pid, prof = resolve_effective_profile(
+            self.PROFILES, "grammar_tidy", {"Code.exe": "professional"},
+            auto_profile=True, app_name="Code.exe",
+        )
+        assert pid == "professional"
+        assert prof["name"] == "Professional Email"
+
+    def test_unmapped_app_falls_back_to_active_profile(self):
+        # The sticky bug: after one mapped app, every later dictation kept that
+        # profile. An unmapped app must return to the user's chosen mode.
+        pid, _ = resolve_effective_profile(
+            self.PROFILES, "grammar_tidy", {"Code.exe": "professional"},
+            auto_profile=True, app_name="Notepad.exe",
+        )
+        assert pid == "grammar_tidy"
+
+    def test_app_mapped_to_raw_resolves_to_raw(self):
+        pid, prof = resolve_effective_profile(
+            self.PROFILES, "grammar_tidy", {"Code.exe": "raw"},
+            auto_profile=True, app_name="Code.exe",
+        )
+        assert pid == "raw"
+        assert prof["prompt"] == "__RAW__"
+
+    def test_mapping_to_deleted_profile_falls_back_to_active(self):
+        pid, _ = resolve_effective_profile(
+            self.PROFILES, "grammar_tidy", {"Code.exe": "gone"},
+            auto_profile=True, app_name="Code.exe",
+        )
+        assert pid == "grammar_tidy"
+
+    def test_missing_active_profile_falls_back_to_default(self):
+        pid, _ = resolve_effective_profile(
+            self.PROFILES, "also_gone", {}, auto_profile=False, app_name=None,
+        )
+        assert pid == ProfileManager.DEFAULT_PROFILE_ID
+
+    def test_unknown_app_name_is_safe(self):
+        pid, _ = resolve_effective_profile(
+            self.PROFILES, "grammar_tidy", {"Code.exe": "professional"},
+            auto_profile=True, app_name=None,
+        )
+        assert pid == "grammar_tidy"
