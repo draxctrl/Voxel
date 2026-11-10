@@ -11,7 +11,16 @@ from src.ui_pyqt6.theme import (
     detect_system_theme,
     palette_for,
     build_qss,
+    load_fonts,
 )
+from src.main import _get_assets_dir as _assets_dir
+
+
+@pytest.fixture(scope="module")
+def qapp():
+    from PyQt6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication([])
+    yield app
 
 
 class TestPaletteTokens:
@@ -108,3 +117,18 @@ class TestBuildQss:
         # Per-window "QScrollArea { border: none }" overrides are what sent
         # Stats and the FAQ back to native scrollbars.
         assert "QScrollArea" in build_qss(DARK)
+
+
+class TestFontLoading:
+    def test_returns_false_for_a_missing_directory(self, qapp):
+        """A frozen build with the fonts left out must not crash on startup."""
+        assert load_fonts("C:/definitely/not/here") is False
+
+    def test_registers_inter_from_the_bundled_assets(self, qapp):
+        from PyQt6.QtGui import QFontDatabase
+        assert load_fonts(_assets_dir()) is True
+        assert "Inter" in QFontDatabase.families()
+
+    def test_is_safe_to_call_twice(self, qapp):
+        assert load_fonts(_assets_dir()) is True
+        assert load_fonts(_assets_dir()) is True

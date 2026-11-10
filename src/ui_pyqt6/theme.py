@@ -1,9 +1,13 @@
 """
 theme.py - Shared UI theme constants, stylesheet, and reusable widgets for Voxel.
 """
+import logging
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPainter, QPen, QColor
 from PyQt6.QtWidgets import QComboBox, QCheckBox, QWidget
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # iOS palettes
@@ -116,6 +120,43 @@ SCROLLBAR_GUTTER = 4
 SCROLLBAR_THICKNESS = 8
 
 FONT_STACK = '"Inter", "Segoe UI", system-ui, sans-serif'
+
+#: Loaded font family names, so repeated calls don't re-register the same file.
+_loaded_fonts: set[str] = set()
+
+
+def load_fonts(assets_dir: str) -> bool:
+    """Register the bundled Inter faces with Qt. True if at least one loaded.
+
+    Inter stands in for SF Pro, which cannot legally be bundled. It ships with
+    the app rather than being fetched at runtime, and the stylesheet falls back
+    to Segoe UI, so a missing or unreadable font file costs typography and
+    nothing else.
+    """
+    import os
+    from PyQt6.QtGui import QFontDatabase
+
+    font_dir = os.path.join(assets_dir, "fonts")
+    if not os.path.isdir(font_dir):
+        logger.warning("Font directory not found: %s — falling back to Segoe UI", font_dir)
+        return False
+
+    loaded_any = False
+    for filename in sorted(os.listdir(font_dir)):
+        if not filename.lower().endswith((".ttf", ".otf")):
+            continue
+        path = os.path.join(font_dir, filename)
+        if path in _loaded_fonts:
+            loaded_any = True
+            continue
+        font_id = QFontDatabase.addApplicationFont(path)
+        if font_id >= 0:
+            _loaded_fonts.add(path)
+            loaded_any = True
+        else:
+            logger.warning("Qt refused to load font %s", path)
+
+    return loaded_any
 
 
 def build_qss(palette: dict[str, str]) -> str:

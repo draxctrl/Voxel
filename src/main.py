@@ -23,6 +23,7 @@ from src.history import HistoryStore
 from src.profiles import ProfileManager, resolve_effective_profile
 from src.voice_commands import VoiceCommandProcessor
 from src.app_detector import AppDetector
+from src.ui_pyqt6.theme import load_fonts
 from src.ui_pyqt6.settings_ui import SettingsWindow
 from src.ui_pyqt6.recording_overlay import RecordingOverlay
 from src.ui_pyqt6.splash import SplashScreen
@@ -68,8 +69,12 @@ class VoxelApp:
         self._qapp = QApplication(sys.argv)
         self._qapp.setQuitOnLastWindowClosed(False)
 
-        # Set app icon globally
+        # Bundled Inter stands in for SF Pro, which can't be redistributed.
+        # The stylesheet falls back to Segoe UI if this fails.
         assets_dir = _get_assets_dir()
+        load_fonts(assets_dir)
+
+        # Set app icon globally
         ico_path = os.path.join(assets_dir, "icon.ico")
         if os.path.exists(ico_path):
             self._qapp.setWindowIcon(QIcon(ico_path))
