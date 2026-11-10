@@ -670,6 +670,67 @@ class ArrowComboBox(QComboBox):
         painter.end()
 
 
+class IOSSwitch(QCheckBox):
+    """An iOS pill switch that is still a QCheckBox underneath.
+
+    Subclassing QCheckBox keeps every existing setChecked / isChecked /
+    stateChanged call site working, so swapping it in is a one-line change at
+    each site rather than a rewrite. The pill is drawn rather than styled
+    because QSS can't express the knob's travel.
+
+    The "on" colour is Voxel indigo, deliberately not Apple's green.
+    """
+
+    TRACK_W = 44
+    TRACK_H = 26
+    KNOB_INSET = 3
+
+    def __init__(self, text: str = "", parent: QWidget | None = None) -> None:
+        super().__init__(text, parent)
+        self._palette_tokens: dict[str, str] = DARK
+        # The native indicator is hidden; we draw the pill ourselves.
+        self.setStyleSheet(
+            f"QCheckBox::indicator {{ width: {self.TRACK_W}px; height: {self.TRACK_H}px; }}"
+        )
+
+    def set_palette(self, palette: dict[str, str]) -> None:
+        self._palette_tokens = palette
+        self.update()
+
+    def _on_colour(self) -> QColor:
+        return QColor(self._palette_tokens["accent"])
+
+    def _off_colour(self) -> QColor:
+        return QColor(self._palette_tokens["switch_off"])
+
+    def sizeHint(self):  # noqa: N802
+        hint = super().sizeHint()
+        hint.setHeight(max(hint.height(), self.TRACK_H + 4))
+        return hint
+
+    def paintEvent(self, event):  # noqa: N802
+        # Let the base class draw the label, then paint the pill over the
+        # (hidden) indicator area.
+        super().paintEvent(event)
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(Qt.PenStyle.NoPen)
+
+        y = (self.height() - self.TRACK_H) // 2
+        radius = self.TRACK_H / 2
+        painter.setBrush(self._on_colour() if self.isChecked() else self._off_colour())
+        painter.drawRoundedRect(0, y, self.TRACK_W, self.TRACK_H, radius, radius)
+
+        knob_d = self.TRACK_H - (self.KNOB_INSET * 2)
+        knob_x = (
+            self.TRACK_W - knob_d - self.KNOB_INSET if self.isChecked() else self.KNOB_INSET
+        )
+        painter.setBrush(QColor("#FFFFFF"))
+        painter.drawEllipse(knob_x, y + self.KNOB_INSET, knob_d, knob_d)
+        painter.end()
+
+
 class TickCheckBox(QCheckBox):
     """QCheckBox that draws a white checkmark when checked."""
 
