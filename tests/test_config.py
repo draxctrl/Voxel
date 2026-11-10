@@ -75,3 +75,20 @@ class TestConfig:
         cfg.load()
         cfg.set("api_key", "gsk_abc123")
         assert cfg.is_configured() is True
+
+
+class TestMicDeviceConfig:
+    def test_mic_device_name_defaults_to_none(self):
+        assert "mic_device_name" in DEFAULT_CONFIG
+        assert DEFAULT_CONFIG["mic_device_name"] is None
+
+    def test_legacy_integer_mic_device_is_preserved_as_hint(self, tmp_path):
+        # A config written by the current shipped version: an index, no name.
+        config_path = tmp_path / "config.json"
+        config_path.write_text(json.dumps({"mic_device": 3}), encoding="utf-8")
+
+        cfg = Config(config_path=str(config_path))
+        cfg.load()
+
+        assert cfg.get("mic_device") == 3
+        assert cfg.get("mic_device_name") is None

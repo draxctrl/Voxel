@@ -20,11 +20,37 @@ CHUNK_SIZE = 512  # ~32ms @ 16kHz - small for low latency
 PREROLL_SECONDS = 0.6
 
 
+def find_input_device_by_name(pa, name: str) -> int | None:
+    """Return the index of the input device called *name*, or None.
+
+    Device indices are not stable — they renumber whenever audio devices are
+    added or removed — so the name is what we persist and this is how we turn
+    it back into an index at open time. When several devices share a name the
+    lowest index wins, so resolution is deterministic.
+    """
+    if not name:
+        return None
+    try:
+        count = pa.get_device_count()
+    except Exception:
+        return None
+    for i in range(count):
+        try:
+            info = pa.get_device_info_by_index(i)
+        except Exception:
+            continue
+        if info.get("maxInputChannels", 0) <= 0:
+            continue
+        if info.get("name") == name:
+            return int(info.get("index", i))
+    return None
+
+
 class MicRecorder:
     """Continuously captures audio into a ring buffer; freezes it on start() and
     keeps recording until stop(). This eliminates first-word cutoffs."""
 
-    def __init__(self, device_index: int | None = None) -> None:
+    def __init__(self, device_name: str | None = None, device_index: int | None = None) -> None:
         self._pa: Optional[pyaudio.PyAudio] = None
         self._stream: Optional[pyaudio.Stream] = None
         self._recording: bool = False
@@ -33,7 +59,10 @@ class MicRecorder:
         self._preroll_max_chunks: int = 20
         self._stream_thread: Optional[threading.Thread] = None
         self._stream_running: bool = False
+        self._device_name = device_name
         self._device_index = device_index
+        self._active_device_name: str | None = None
+        self._requested_device_missing: bool = False
         self._actual_rate: int = TARGET_SAMPLE_RATE
         self._lock = threading.Lock()
         # Try to start stream, but don't crash app if it fails
@@ -41,8 +70,12 @@ class MicRecorder:
             self._start_stream()
         except Exception as e:
             logger.warning("Initial mic stream failed: %s. Will retry with default device.", e)
-            # Fall back to default device
-            if self._device_index is not None:
+            # Fall back to default device, but remember that the chosen one
+            # could not be opened so the UI can say so.
+            if self._device_name is not None or self._device_index is not None:
+                if self._device_name is not None:
+                    self._requested_device_missing = True
+                self._device_name = None
                 self._device_index = None
                 try:
                     self._start_stream()
@@ -53,10 +86,49 @@ class MicRecorder:
     def is_recording(self) -> bool:
         return self._recording
 
-    def _find_supported_rate(self, pa: pyaudio.PyAudio) -> int:
+    @property
+    def active_device_name(self) -> str | None:
+        """Name of the device actually open, which may not be the one asked for."""
+        return self._active_device_name
+
+    @property
+    def requested_device_missing(self) -> bool:
+        """True when a device name was saved but no such device could be found."""
+        return self._requested_device_missing
+
+    def _resolve_device(self, pa: pyaudio.PyAudio) -> int | None:
+        """Turn the saved name (preferred) or index into a live device index.
+
+        Sets _requested_device_missing when a name was asked for and is gone, so
+        callers can tell the user instead of silently recording from elsewhere.
+        """
+        if self._device_name:
+            index = find_input_device_by_name(pa, self._device_name)
+            if index is not None:
+                self._requested_device_missing = False
+                return index
+            self._requested_device_missing = True
+            logger.warning(
+                "Saved microphone %r not found; falling back to the default device",
+                self._device_name,
+            )
+            return None
+
+        return self._device_index
+
+    def _record_active_device(self, pa: pyaudio.PyAudio, index: int | None) -> None:
+        """Remember the name of whatever device we actually opened."""
         try:
-            if self._device_index is not None:
-                info = pa.get_device_info_by_index(self._device_index)
+            info = pa.get_device_info_by_index(index) if index is not None \
+                else pa.get_default_input_device_info()
+            self._active_device_name = info.get("name")
+        except Exception:
+            self._active_device_name = None
+
+    def _find_supported_rate(self, pa: pyaudio.PyAudio, device_index: int | None = None) -> int:
+        try:
+            if device_index is not None:
+                info = pa.get_device_info_by_index(device_index)
             else:
                 info = pa.get_default_input_device_info()
             default_rate = int(info.get("defaultSampleRate", 16000))
@@ -73,8 +145,8 @@ class MicRecorder:
                     input_format=pyaudio.paInt16,
                     input_channels=CHANNELS,
                 )
-                if self._device_index is not None:
-                    kwargs["input_device"] = self._device_index
+                if device_index is not None:
+                    kwargs["input_device"] = device_index
                 if pa.is_format_supported(rate, **kwargs):
                     return rate
             except Exception:
@@ -86,7 +158,8 @@ class MicRecorder:
         This way, when the user presses the hotkey, we already have 0.6s of audio ready."""
         try:
             self._pa = pyaudio.PyAudio()
-            self._actual_rate = self._find_supported_rate(self._pa)
+            resolved_index = self._resolve_device(self._pa)
+            self._actual_rate = self._find_supported_rate(self._pa, resolved_index)
             logger.info("Mic stream opening at %d Hz", self._actual_rate)
 
             open_kwargs = dict(
@@ -96,10 +169,11 @@ class MicRecorder:
                 input=True,
                 frames_per_buffer=CHUNK_SIZE,
             )
-            if self._device_index is not None:
-                open_kwargs["input_device_index"] = self._device_index
+            if resolved_index is not None:
+                open_kwargs["input_device_index"] = resolved_index
 
             self._stream = self._pa.open(**open_kwargs)
+            self._record_active_device(self._pa, resolved_index)
 
             # Size the preroll ring based on actual sample rate
             chunks_per_second = self._actual_rate / CHUNK_SIZE

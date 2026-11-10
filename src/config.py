@@ -18,6 +18,11 @@ DEFAULT_CONFIG = {
     "undo_hotkey": "<ctrl>+<shift>+z",
     "auto_profile": False,
     "app_profiles": {},
+    # Microphone is identified by name: PyAudio indices renumber whenever audio
+    # devices are added or removed, so an index alone silently points at a
+    # different mic. mic_device is kept only as a fallback hint for old configs.
+    "mic_device_name": None,
+    "mic_device": None,
     "offline_mode": False,
     "offline_model": "base",
     "raw_mode": False,
