@@ -102,6 +102,253 @@ def palette_for(name: str) -> dict[str, str]:
 
 
 # ---------------------------------------------------------------------------
+# The stylesheet
+#
+# Built on demand from a palette rather than fixed at import time, so changing
+# theme restyles live windows and dialogs created later use the current colours.
+# This is the ONLY place chrome is defined: a second copy is what let the
+# scrollbars and dropdowns drift apart in the first place.
+# ---------------------------------------------------------------------------
+
+#: Gap between a scrollbar and the content it scrolls, so the bar never sits on
+#: top of the cards.
+SCROLLBAR_GUTTER = 4
+SCROLLBAR_THICKNESS = 8
+
+FONT_STACK = '"Inter", "Segoe UI", system-ui, sans-serif'
+
+
+def build_qss(palette: dict[str, str]) -> str:
+    """Render the application stylesheet for *palette*."""
+    p = palette
+    return f"""
+QWidget {{
+    background-color: {p['bg']};
+    color: {p['text']};
+    font-family: {FONT_STACK};
+    font-size: 13px;
+}}
+
+QLabel {{
+    background: transparent;
+    color: {p['text']};
+}}
+
+QLabel#subtitle, QLabel#section_sub, QLabel#status_label {{
+    color: {p['secondary']};
+    font-size: 11px;
+}}
+
+QLabel#section_title {{
+    color: {p['text']};
+    font-size: 13px;
+    font-weight: 600;
+}}
+
+QLabel#app_title {{
+    color: {p['text']};
+    font-size: 22px;
+    font-weight: 700;
+}}
+
+QLineEdit {{
+    background-color: {p['input_bg']};
+    color: {p['text']};
+    border: 1px solid {p['separator']};
+    border-radius: 10px;
+    padding: 6px 10px;
+    font-family: {FONT_STACK};
+    font-size: 13px;
+    selection-background-color: {p['accent']};
+}}
+
+QLineEdit:focus {{
+    border: 1px solid {p['accent']};
+}}
+
+QLineEdit[readOnly="true"] {{
+    color: {p['secondary']};
+}}
+
+QTextEdit {{
+    background-color: {p['input_bg']};
+    color: {p['text']};
+    border: 1px solid {p['separator']};
+    border-radius: 10px;
+    padding: 8px;
+    font-family: {FONT_STACK};
+    font-size: 13px;
+    selection-background-color: {p['accent']};
+}}
+
+QTextEdit:focus {{
+    border: 1px solid {p['accent']};
+}}
+
+QComboBox {{
+    background-color: {p['input_bg']};
+    color: {p['text']};
+    border: 1px solid {p['separator']};
+    border-radius: 10px;
+    padding: 6px 10px;
+    font-family: {FONT_STACK};
+    font-size: 13px;
+    min-width: 120px;
+}}
+
+QComboBox:focus {{
+    border: 1px solid {p['accent']};
+}}
+
+QComboBox:disabled {{
+    color: {p['secondary']};
+    background-color: {p['bg']};
+}}
+
+QComboBox::drop-down {{
+    subcontrol-origin: padding;
+    subcontrol-position: center right;
+    width: 28px;
+    border: none;
+    background: transparent;
+}}
+
+QComboBox::down-arrow {{
+    image: none;
+    border: none;
+    width: 0px;
+    height: 0px;
+}}
+
+/* Popup matches the field it belongs to: same radius, same border, same fill. */
+QComboBox QAbstractItemView {{
+    background-color: {p['card']};
+    color: {p['text']};
+    border: 1px solid {p['separator']};
+    border-radius: 10px;
+    selection-background-color: {p['accent']};
+    selection-color: #FFFFFF;
+    outline: none;
+    padding: 4px;
+}}
+
+QComboBox QAbstractItemView::item {{
+    padding: 6px 10px;
+    min-height: 24px;
+    border-radius: 6px;
+}}
+
+QComboBox QAbstractItemView::item:hover,
+QComboBox QAbstractItemView::item:selected {{
+    background-color: {p['accent']};
+    color: #FFFFFF;
+}}
+
+QPushButton {{
+    background-color: {p['accent']};
+    color: #FFFFFF;
+    border: none;
+    border-radius: 10px;
+    padding: 6px 18px;
+    font-family: {FONT_STACK};
+    font-size: 12px;
+    font-weight: 600;
+    min-height: 28px;
+}}
+
+QPushButton:hover {{
+    background-color: {p['accent_hover']};
+}}
+
+QPushButton:pressed {{
+    background-color: {p['accent_pressed']};
+}}
+
+QPushButton#save_btn {{
+    font-size: 14px;
+    border-radius: 12px;
+    min-height: 42px;
+    padding: 10px 18px;
+}}
+
+QPushButton#capture_btn_recording {{
+    background-color: {p['error']};
+}}
+
+QFrame#divider {{
+    background-color: {p['separator']};
+    max-height: 1px;
+    min-height: 1px;
+    border: none;
+}}
+
+/* --- scrollbars: defined once, for every window --------------------------
+   Every subcontrol is styled. Anything left out makes Qt fall back to the
+   native Windows scrollbar for that part, which is what made Stats and the
+   FAQ dialog look unlike the rest of the app. */
+QScrollBar:vertical {{
+    background: transparent;
+    width: {SCROLLBAR_THICKNESS}px;
+    margin: 0px 0px 0px {SCROLLBAR_GUTTER}px;
+    border: none;
+}}
+
+QScrollBar::handle:vertical {{
+    background: {p['scrollbar']};
+    border-radius: {SCROLLBAR_THICKNESS // 2}px;
+    min-height: 28px;
+}}
+
+QScrollBar::handle:vertical:hover {{
+    background: {p['scrollbar_hover']};
+}}
+
+QScrollBar:horizontal {{
+    background: transparent;
+    height: {SCROLLBAR_THICKNESS}px;
+    margin: {SCROLLBAR_GUTTER}px 0px 0px 0px;
+    border: none;
+}}
+
+QScrollBar::handle:horizontal {{
+    background: {p['scrollbar']};
+    border-radius: {SCROLLBAR_THICKNESS // 2}px;
+    min-width: 28px;
+}}
+
+QScrollBar::handle:horizontal:hover {{
+    background: {p['scrollbar_hover']};
+}}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical,
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
+    height: 0px;
+    width: 0px;
+    background: none;
+    border: none;
+}}
+
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical,
+QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {{
+    background: none;
+}}
+
+QScrollArea {{
+    background: transparent;
+    border: none;
+}}
+
+QToolTip {{
+    background-color: {p['card']};
+    color: {p['text']};
+    border: 1px solid {p['separator']};
+    border-radius: 8px;
+    padding: 6px 8px;
+}}
+"""
+
+
+# ---------------------------------------------------------------------------
 # Legacy flat-dark constants (removed once every window reads a palette)
 # ---------------------------------------------------------------------------
 BG = "#0f0f0f"

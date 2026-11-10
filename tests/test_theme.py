@@ -5,7 +5,13 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
 
-from src.ui_pyqt6.theme import LIGHT, DARK, detect_system_theme, palette_for
+from src.ui_pyqt6.theme import (
+    LIGHT,
+    DARK,
+    detect_system_theme,
+    palette_for,
+    build_qss,
+)
 
 
 class TestPaletteTokens:
@@ -64,3 +70,41 @@ class TestPaletteFor:
 
     def test_unknown_name_returns_dark(self):
         assert palette_for("solarized") is DARK
+
+
+class TestBuildQss:
+    def test_uses_the_palette_colours(self):
+        assert DARK["card"] in build_qss(DARK)
+        assert LIGHT["card"] in build_qss(LIGHT)
+
+    def test_leaves_no_unsubstituted_placeholders(self):
+        qss = build_qss(DARK)
+        assert "{bg}" not in qss and "{card}" not in qss and "{accent}" not in qss
+
+    def test_scrollbar_reserves_clearance_from_content(self):
+        """The bar must not sit on top of the cards it scrolls."""
+        qss = build_qss(DARK)
+        assert "QScrollBar:vertical" in qss
+        vertical_block = qss.split("QScrollBar:vertical")[1].split("}")[0]
+        assert "margin" in vertical_block
+
+    def test_scrollbar_styles_every_subcontrol(self):
+        """Any subcontrol left unstyled falls back to the native Windows scrollbar."""
+        qss = build_qss(DARK)
+        for part in ("add-line", "sub-line", "add-page", "sub-page"):
+            assert part in qss, f"{part} unstyled - Qt will draw the native bar"
+
+    def test_horizontal_scrollbar_is_styled_too(self):
+        assert "QScrollBar:horizontal" in build_qss(DARK)
+
+    def test_combo_popup_is_styled(self):
+        assert "QComboBox QAbstractItemView" in build_qss(DARK)
+
+    def test_font_stack_falls_back_to_segoe(self):
+        """If Inter fails to load, text must still render in the system face."""
+        assert '"Inter", "Segoe UI"' in build_qss(DARK)
+
+    def test_scroll_area_border_is_removed_centrally(self):
+        # Per-window "QScrollArea { border: none }" overrides are what sent
+        # Stats and the FAQ back to native scrollbars.
+        assert "QScrollArea" in build_qss(DARK)
