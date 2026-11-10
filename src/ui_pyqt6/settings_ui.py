@@ -11,7 +11,7 @@ import sys
 import threading
 from typing import Callable
 
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QObject
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QObject, QSize
 from PyQt6.QtGui import QFont, QIcon, QFontDatabase, QPainter, QPen, QColor, QPainterPath
 from PyQt6.QtWidgets import (
     QWidget,
@@ -32,6 +32,7 @@ from pynput import keyboard as pynput_keyboard
 # the palette, the stylesheet and these widgets; two copies is what let the
 # scrollbars and dropdowns drift apart.
 from src.ui_pyqt6.theme import ArrowComboBox, IOSSwitch, current_palette
+from src.ui_pyqt6.flags import flag_icon
 
 logger = logging.getLogger(__name__)
 
@@ -368,8 +369,17 @@ class SettingsWindow(QWidget):
             ("ko", "Korean"),
             ("zh", "Chinese"),
         ]
+        # Flags are images: Windows renders flag emoji as letter pairs. A
+        # language with no flag (Auto-detect) or a missing asset still gets its
+        # row, just without a picture.
+        flag_assets = self._resolve_assets_root()
+        self._lang_combo.setIconSize(QSize(20, 15))
         for code, label in _LANGUAGES:
-            self._lang_combo.addItem(label, userData=code)
+            icon = flag_icon(code, flag_assets) if flag_assets else None
+            if icon is not None:
+                self._lang_combo.addItem(icon, label, userData=code)
+            else:
+                self._lang_combo.addItem(label, userData=code)
         # Select current language
         current_lang = self._config.get("language", "en")
         for i in range(self._lang_combo.count()):
@@ -676,6 +686,20 @@ class SettingsWindow(QWidget):
     # ------------------------------------------------------------------
     # Asset resolution (frozen + dev paths)
     # ------------------------------------------------------------------
+
+    def _resolve_assets_root(self) -> str | None:
+        """Directory holding the bundled assets, or None if it can't be found."""
+        if hasattr(sys, "_MEIPASS"):
+            candidate = os.path.join(sys._MEIPASS, "src", "assets")  # type: ignore[attr-defined]
+            if os.path.isdir(candidate):
+                return candidate
+            candidate = os.path.join(sys._MEIPASS, "assets")  # type: ignore[attr-defined]
+            if os.path.isdir(candidate):
+                return candidate
+
+        here = os.path.dirname(os.path.abspath(__file__))
+        candidate = os.path.normpath(os.path.join(here, "..", "assets"))
+        return candidate if os.path.isdir(candidate) else None
 
     @staticmethod
     def _resolve_asset(filename: str) -> str | None:

@@ -14,6 +14,7 @@ a = Analysis(
         ('src/assets/chime_rising.wav', 'src/assets'),
         ('src/assets/icon.ico', 'src/assets'),
         ('src/assets/fonts', 'src/assets/fonts'),
+        ('src/assets/flags', 'src/assets/flags'),
     ],
     hiddenimports=[
         'pynput.keyboard._win32',
