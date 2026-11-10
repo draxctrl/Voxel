@@ -45,6 +45,10 @@ _SUCCESS = "#22c55e"
 _ERROR = "#ef4444"
 _WARNING = "#f59e0b"
 
+# Dictation Mode subtitle, and what it says when Offline mode makes it inert.
+_MODE_SUBTITLE = "How your speech is cleaned up"
+_MODE_SUBTITLE_OFFLINE = "Not used in Offline mode — transcription only"
+
 # ---------------------------------------------------------------------------
 # QSS stylesheet
 # ---------------------------------------------------------------------------
@@ -525,7 +529,9 @@ class SettingsWindow(QWidget):
         root_layout.addSpacing(8)
 
         # ── Dictation Mode ───────────────────────────────────────────────
-        self._add_section(root_layout, "Dictation Mode", "How your speech is cleaned up")
+        self._profile_sub = self._add_section(
+            root_layout, "Dictation Mode", _MODE_SUBTITLE
+        )
 
         profile_row = QHBoxLayout()
         profile_row.setSpacing(8)
@@ -624,7 +630,11 @@ class SettingsWindow(QWidget):
         self._offline_check = _TickCheckBox("Offline mode")
         self._offline_check.setChecked(self._config.get("offline_mode", False))
         self._offline_check.setToolTip("Use local Whisper model instead of Groq API.\nNo internet needed, but slower and no AI text cleanup.\nModel downloads on first use (~145MB for base).")
+        # Offline transcription skips LLM cleanup entirely, so Dictation Mode has
+        # no effect. Say so instead of leaving a control that quietly does nothing.
+        self._offline_check.stateChanged.connect(self._sync_offline_state)
         check_col.addWidget(self._offline_check)
+        self._sync_offline_state()
 
 
         options_row.addLayout(check_col, stretch=1)
@@ -661,7 +671,8 @@ class SettingsWindow(QWidget):
     # Helper: section header
     # ------------------------------------------------------------------
 
-    def _add_section(self, layout: QVBoxLayout, title: str, subtitle: str) -> None:
+    def _add_section(self, layout: QVBoxLayout, title: str, subtitle: str) -> QLabel:
+        """Add a section header. Returns the subtitle label so callers can update it."""
         t = QLabel(title)
         t.setObjectName("section_title")
         layout.addWidget(t)
@@ -671,6 +682,7 @@ class SettingsWindow(QWidget):
         layout.addWidget(s)
 
         layout.addSpacing(4)
+        return s
 
     # ------------------------------------------------------------------
     # Microphone enumeration
@@ -939,6 +951,16 @@ class SettingsWindow(QWidget):
         colour = _SUCCESS if success else _ERROR
         prefix = "\u2713" if success else "\u2717"
         self._set_status(f"{prefix}  {message}", colour)
+
+    def _sync_offline_state(self) -> None:
+        """Grey out Dictation Mode while Offline mode is on, and say why.
+
+        Offline transcription never calls the LLM, so the chosen mode would be
+        silently ignored.
+        """
+        offline = self._offline_check.isChecked()
+        self._profile_combo.setEnabled(not offline)
+        self._profile_sub.setText(_MODE_SUBTITLE_OFFLINE if offline else _MODE_SUBTITLE)
 
     def show_warning(self, text: str) -> None:
         """Show a warning in the status line (e.g. the chosen mic is missing)."""
