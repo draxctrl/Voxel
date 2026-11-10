@@ -58,9 +58,8 @@ The result: you speak naturally, and clean text appears. **No editing needed.**
 | Offline mode | Yes (local Whisper) | No |
 | Dictation history | Yes | Yes |
 | Custom voice commands | Yes | Yes |
-| Multiple dictation modes | Yes (5 built-in) | Yes |
+| Multiple dictation modes | Yes (6 built-in) | Yes |
 | Per-app auto profiles | Yes | Yes |
-| Undo last dictation | Yes | No |
 | Statistics dashboard | Yes | Yes |
 | No account required | Just a free Groq API key | Requires account + payment |
 | Windows + macOS | Yes | Yes |
@@ -79,9 +78,8 @@ The result: you speak naturally, and clean text appears. **No editing needed.**
 
 ### Smart Features
 - 📚 **Dictation History** - every transcription saved, searchable
-- 🎭 **5 Dictation Modes** - Default, Professional Email, Casual, Code Comments, Technical
+- 🎭 **6 Dictation Modes** - Raw, Grammar only (keeps your words), Grammar + tidy up, Professional Email, Code Comments, Technical Writing
 - 🗣️ **Voice Commands** - say "sign off" → insert your signature template
-- ↩️ **Undo Last Dictation** - made a mistake? Ctrl+Shift+Z to revert
 - 📊 **Statistics Dashboard** - track your usage and time saved
 - 🪄 **Auto-switch profile per app** - use "Professional" in Outlook, "Code" in VS Code
 - 💾 **Offline Mode** - use local Whisper model, no internet needed
@@ -99,8 +97,9 @@ The result: you speak naturally, and clean text appears. **No editing needed.**
 
 ```
 1. 🟢 Hold your hotkey (default: Ctrl+Shift+Space)
+   (or tap once to start if you switch Activation to toggle)
 2. 🎙️ Speak naturally - say "um" and "like" all you want
-3. 🔴 Release the hotkey
+3. 🔴 Release the hotkey (or tap again in toggle mode)
 4. ✅ Clean, polished text is pasted into whatever app you're using
 ```
 
@@ -171,11 +170,11 @@ Right-click the tray icon to access Settings, History, or Statistics. Inside Set
 | Setting | Description |
 |---------|-------------|
 | 🔑 **API Key** | Your Groq API key |
-| ⌨️ **Hotkey** | Customizable push-to-talk key combo |
-| ↩️ **Undo hotkey** | Key combo to undo last dictation |
-| 🎭 **Dictation Mode** | 5 built-in cleanup styles + custom profiles |
+| ⌨️ **Hotkey** | Customizable key combo |
+| 🔁 **Activation** | Hold to talk, or press to start and press to stop |
+| 🎭 **Dictation Mode** | 6 built-in cleanup styles + custom profiles |
 | 🗣️ **Voice Commands** | Define trigger phrases that expand to templates |
-| 🎤 **Microphone** | Choose your recording device |
+| 🎤 **Microphone** | Choose your recording device (remembered by name) |
 | 🌍 **Language** | Auto-detect or pick from 9 languages |
 | 🔇 **Mute sounds** | Disable the chime after recording |
 | 🪄 **Auto-switch profile per app** | Use different modes for different apps |

@@ -1228,7 +1228,22 @@ class SettingsWindow(QWidget):
 
             ("Microphone selection",
              "Choose which microphone Voxel uses for recording. "
-             "If you plug in a new mic, restart Voxel or reopen Settings to see it."),
+             "If you plug in a new mic, restart Voxel or reopen Settings to see it.\n\n"
+             "Voxel remembers your microphone by name, so plugging in other audio "
+             "devices won't quietly switch it to a different one.\n\n"
+             "If your chosen mic isn't available, Voxel keeps working using your "
+             "default microphone and tells you — the device name shown while "
+             "recording is always the one actually in use."),
+
+            ("Activation: hold or toggle",
+             "Hold to talk: recording runs while you hold the hotkey, and stops "
+             "when you let go.\n\n"
+             "Press to start, press to stop: tap the hotkey once to begin and "
+             "again to finish — useful for long dictation.\n\n"
+             "Toggle needs a hotkey with a normal key in it (like Ctrl+Shift+Space). "
+             "A modifier-only combo such as Ctrl+Alt can't toggle, because every "
+             "press of those keys would flip recording on or off.\n\n"
+             "Recording still stops automatically after 2 minutes."),
 
             ("Mute sounds",
              "When enabled, the confirmation chime that plays after you stop recording is silenced."),
@@ -1245,12 +1260,17 @@ class SettingsWindow(QWidget):
 
             ("Dictation Modes",
              "Switch between different cleanup styles:\n"
-             "- Default: balanced cleanup, keeps your tone\n"
-             "- Professional Email: polished, business-appropriate\n"
-             "- Casual: light cleanup, keeps slang and personality\n"
-             "- Code Comments: concise, technical\n"
-             "- Technical Writing: precise, documentation-style\n\n"
-             "Select a mode from the Dictation Mode dropdown in settings."),
+             "- Raw (no cleanup): exactly what you said, no AI pass at all\n"
+             "- Grammar only — keep my words: fixes grammar, tense, spelling and\n"
+             "  punctuation but keeps your filler words, slang and phrasing intact\n"
+             "- Grammar + tidy up: fixes grammar AND removes filler words so it\n"
+             "  reads cleanly\n"
+             "- Professional Email: rewritten as polished business correspondence\n"
+             "- Code Comments: terse and declarative, correct identifier spelling\n"
+             "- Technical Writing: precise, documentation-style prose\n\n"
+             "Select a mode from the Dictation Mode dropdown in settings.\n\n"
+             "Note: Dictation Mode has no effect while Offline mode is on, because\n"
+             "offline transcription never runs the AI cleanup step."),
 
             ("Voice Commands",
              "Define trigger phrases that expand to templates.\n\n"
