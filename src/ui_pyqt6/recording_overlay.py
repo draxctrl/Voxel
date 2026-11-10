@@ -221,6 +221,7 @@ class _OverlaySignals(QObject):
     show_processing_sig = pyqtSignal()
     hide_sig = pyqtSignal()
     show_clipboard_sig = pyqtSignal()
+    set_mic_text_sig = pyqtSignal(str)
 
 
 class RecordingOverlay(QWidget):
@@ -267,6 +268,9 @@ class RecordingOverlay(QWidget):
 
         # --- build UI -------------------------------------------------------
         self._build_ui()
+
+        # _mic_label only exists once the UI is built
+        self._signals.set_mic_text_sig.connect(self._mic_label.setText)
 
         # --- timers ---------------------------------------------------------
         self._wave_timer = QTimer(self)
@@ -496,6 +500,14 @@ class RecordingOverlay(QWidget):
     def show_clipboard_notice(self) -> None:
         """Show a brief 'Copied to clipboard' notice. Thread-safe."""
         self._signals.show_clipboard_sig.emit()
+
+    def set_mic_text(self, text: str) -> None:
+        """Set the device line shown under the waveform. Thread-safe.
+
+        Used to name the microphone actually in use, or to warn when it isn't
+        the one the user chose.
+        """
+        self._signals.set_mic_text_sig.emit(text)
 
     # Override show() so direct calls also go through our setup
     def show(self) -> None:  # noqa: A003

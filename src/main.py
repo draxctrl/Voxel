@@ -81,7 +81,10 @@ class VoxelApp:
         self._config.load()
 
         # Core components
-        self._recorder = MicRecorder(device_index=self._config.get("mic_device", None))
+        self._recorder = MicRecorder(
+            device_name=self._config.get("mic_device_name", None),
+            device_index=self._config.get("mic_device", None),
+        )
         self._groq_client: Groq | None = None
         self._transcriber: Transcriber | None = None
         self._cleaner: TextCleaner | None = None
@@ -364,6 +367,37 @@ class VoxelApp:
         except Exception as e:
             logger.warning("Failed to restore clipboard on undo: %s", e)
 
+    def _report_mic_fallback(self) -> None:
+        """Say which microphone is actually in use, and warn if it isn't the chosen one.
+
+        Falling back silently is what made a renumbered device look like a broken
+        app, so the fallback is always visible: on the recording overlay, where
+        the user is looking while they talk, and in Settings.
+        """
+        active = getattr(self._recorder, "active_device_name", None)
+        missing = getattr(self._recorder, "requested_device_missing", False)
+
+        if missing:
+            wanted = self._config.get("mic_device_name") or "Saved microphone"
+            using = active or "default microphone"
+            logger.warning("Microphone %r not found; using %r", wanted, using)
+            message = f"⚠ {wanted} not found — using {using}"
+        elif active:
+            message = active
+        else:
+            return
+
+        try:
+            self._overlay.set_mic_text(message)
+        except Exception as e:
+            logger.debug("Could not set overlay mic text: %s", e)
+
+        if missing:
+            try:
+                self._settings_window.show_warning(message)
+            except Exception as e:
+                logger.debug("Could not show mic warning in settings: %s", e)
+
     def _transcribe_offline(self, audio_bytes: bytes, language: str | None) -> str:
         """Transcribe using local Whisper model."""
         if self._offline_transcriber is None:
@@ -411,7 +445,11 @@ class VoxelApp:
             self._recorder.close()
         except Exception:
             pass
-        self._recorder = MicRecorder(device_index=self._config.get("mic_device", None))
+        self._recorder = MicRecorder(
+            device_name=self._config.get("mic_device_name", None),
+            device_index=self._config.get("mic_device", None),
+        )
+        self._report_mic_fallback()
 
         # Reload voice commands
         self._voice_commands.reload(self._config.get("voice_commands", {}))
@@ -476,6 +514,7 @@ class VoxelApp:
         QTimer.singleShot(50, self._startup_finish)
 
     def _startup_finish(self) -> None:
+        self._report_mic_fallback()
         self._splash.set_status("Ready! Hold Ctrl+Shift+Space to dictate")
         QTimer.singleShot(400, self._finish_and_show_taskbar)
 

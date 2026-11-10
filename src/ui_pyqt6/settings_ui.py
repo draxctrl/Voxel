@@ -704,8 +704,10 @@ class SettingsWindow(QWidget):
             import pyaudio
             pa = pyaudio.PyAudio()
             saved_device = self._config.get("mic_device", None)
+            saved_name = self._config.get("mic_device_name", None)
             default_idx = pa.get_default_input_device_info().get("index", 0)
             selected = 0
+            matched_by_name = False
             seen_names: set[str] = set()
 
             # Find WASAPI host API (has full device names), fall back to default
@@ -729,9 +731,15 @@ class SettingsWindow(QWidget):
                 seen_names.add(name)
                 idx = info.get("index", i)
                 self._mic_combo.addItem(name, userData=idx)
-                if saved_device is not None and idx == saved_device:
+                # Name wins over the index, which may now point elsewhere.
+                if saved_name and name == saved_name:
                     selected = self._mic_combo.count() - 1
-                elif saved_device is None and idx == default_idx:
+                    matched_by_name = True
+                elif not matched_by_name and not saved_name and saved_device is not None \
+                        and idx == saved_device:
+                    selected = self._mic_combo.count() - 1
+                elif not matched_by_name and saved_name is None and saved_device is None \
+                        and idx == default_idx:
                     selected = self._mic_combo.count() - 1
 
             # If nothing matched saved device, select first
@@ -907,6 +915,9 @@ class SettingsWindow(QWidget):
         self._config.set("language", self._lang_combo.currentData())
         self._config.set("hotkey", self._hotkey_edit.text().strip())
         self._config.set("undo_hotkey", self._undo_hotkey_edit.text().strip())
+        # Name is authoritative; the index is only a hint, since PyAudio
+        # renumbers devices whenever audio hardware changes.
+        self._config.set("mic_device_name", self._mic_combo.currentText() or None)
         self._config.set("mic_device", self._mic_combo.currentData())
         self._config.set("active_profile", self._profile_combo.currentData() or "default")
         self._config.set("auto_start", self._autostart_check.isChecked())
@@ -954,6 +965,10 @@ class SettingsWindow(QWidget):
         colour = _SUCCESS if success else _ERROR
         prefix = "\u2713" if success else "\u2717"
         self._set_status(f"{prefix}  {message}", colour)
+
+    def show_warning(self, text: str) -> None:
+        """Show a warning in the status line (e.g. the chosen mic is missing)."""
+        self._set_status(text, _WARNING)
 
     def _set_status(self, text: str, colour: str) -> None:
         self._status_label.setText(text)

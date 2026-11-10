@@ -50,3 +50,37 @@ class TestFullPipeline:
         raw = transcriber.transcribe(b"silence", language="en")
 
         assert raw == ""
+
+
+class TestMicFallbackStillRecords:
+    @patch("src.mic_recorder.pyaudio.PyAudio")
+    def test_missing_requested_mic_still_records_and_flags_fallback(self, mock_pyaudio_cls):
+        """A missing mic must warn but keep working, not block dictation."""
+        from src.mic_recorder import MicRecorder
+
+        devices = [("Realtek Mic", 1)]
+        mock_pa = MagicMock()
+        mock_pa.get_device_count.return_value = len(devices)
+        mock_pa.get_device_info_by_index.side_effect = lambda i: {
+            "index": i, "name": devices[i][0],
+            "maxInputChannels": devices[i][1], "defaultSampleRate": 16000,
+        }
+        mock_pa.get_default_input_device_info.return_value = {
+            "index": 0, "name": "Realtek Mic",
+            "maxInputChannels": 1, "defaultSampleRate": 16000,
+        }
+        mock_stream = MagicMock()
+        mock_stream.read.return_value = b"\x00" * (512 * 2)
+        mock_pa.open.return_value = mock_stream
+        mock_pyaudio_cls.return_value = mock_pa
+
+        recorder = MicRecorder(device_name="Blue Yeti")
+        assert recorder.requested_device_missing is True
+        assert recorder.active_device_name == "Realtek Mic"
+
+        recorder.start()
+        recorder._active_frames = [b"\x00" * (512 * 2)]
+        audio = recorder.stop()
+        recorder.close()
+
+        assert audio is not None and len(audio) > 0
