@@ -6,7 +6,103 @@ from PyQt6.QtGui import QPainter, QPen, QColor
 from PyQt6.QtWidgets import QComboBox, QCheckBox, QWidget
 
 # ---------------------------------------------------------------------------
-# Colour palette
+# iOS palettes
+#
+# Two token sets with identical keys, so anything built from a palette works in
+# either theme. Values are fixed by the design spec; the accent is Voxel indigo
+# rather than iOS blue, and switches use indigo rather than Apple's green.
+# ---------------------------------------------------------------------------
+
+#: Voxel brand indigo, shared by both palettes.
+ACCENT_INDIGO = "#6366f1"
+ACCENT_INDIGO_HOVER = "#818cf8"
+ACCENT_INDIGO_PRESSED = "#4f46e5"
+
+LIGHT: dict[str, str] = {
+    "bg": "#F2F2F7",
+    "card": "#FFFFFF",
+    "card_alt": "#FAFAFC",
+    "separator": "#D6D6DA",
+    "text": "#000000",
+    "secondary": "#8E8E93",
+    "accent": ACCENT_INDIGO,
+    "accent_hover": ACCENT_INDIGO_HOVER,
+    "accent_pressed": ACCENT_INDIGO_PRESSED,
+    "switch_off": "#E9E9EB",
+    "input_bg": "#FFFFFF",
+    "success": "#22c55e",
+    "error": "#ef4444",
+    "warning": "#f59e0b",
+    "scrollbar": "#C7C7CC",
+    "scrollbar_hover": "#A1A1A6",
+}
+
+DARK: dict[str, str] = {
+    "bg": "#000000",
+    "card": "#1C1C1E",
+    "card_alt": "#2C2C2E",
+    "separator": "#2E2E31",
+    "text": "#FFFFFF",
+    "secondary": "#8E8E93",
+    "accent": ACCENT_INDIGO,
+    "accent_hover": ACCENT_INDIGO_HOVER,
+    "accent_pressed": ACCENT_INDIGO_PRESSED,
+    "switch_off": "#39393D",
+    "input_bg": "#1C1C1E",
+    "success": "#22c55e",
+    "error": "#ef4444",
+    "warning": "#f59e0b",
+    "scrollbar": "#48484A",
+    "scrollbar_hover": "#636366",
+}
+
+_THEMES = {"light": LIGHT, "dark": DARK}
+
+
+def _read_apps_use_light_theme():
+    """Raw AppsUseLightTheme value from the registry (Windows only).
+
+    Split out so theme detection can be tested without touching the registry.
+    """
+    import winreg
+
+    key = winreg.OpenKey(
+        winreg.HKEY_CURRENT_USER,
+        r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
+    )
+    try:
+        value, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
+        return value
+    finally:
+        key.Close()
+
+
+def detect_system_theme() -> str:
+    """"light" or "dark", following the Windows app theme setting.
+
+    Defaults to dark on anything unexpected — a missing key on older or
+    locked-down Windows, a non-Windows host, or a value we don't recognise.
+    A theme is never worth crashing the app over.
+    """
+    try:
+        value = _read_apps_use_light_theme()
+    except Exception:
+        return "dark"
+
+    if value == 1:
+        return "light"
+    if value == 0:
+        return "dark"
+    return "dark"
+
+
+def palette_for(name: str) -> dict[str, str]:
+    """Palette for a theme name; unknown names fall back to dark."""
+    return _THEMES.get(name, DARK)
+
+
+# ---------------------------------------------------------------------------
+# Legacy flat-dark constants (removed once every window reads a palette)
 # ---------------------------------------------------------------------------
 BG = "#0f0f0f"
 CARD = "#1a1a1a"
