@@ -94,12 +94,15 @@ class _FakePA:
         return len(self._devices)
 
     def get_device_info_by_index(self, index):
-        name, channels = self._devices[index]
+        entry = self._devices[index]
+        name, channels = entry[0], entry[1]
+        host_api = entry[2] if len(entry) > 2 else 0
         return {
             "index": index,
             "name": name,
             "maxInputChannels": channels,
             "defaultSampleRate": 16000,
+            "hostApi": host_api,
         }
 
 
@@ -192,3 +195,24 @@ class TestMicRecorderDeviceSelection:
 
         assert recorder.requested_device_missing is True
         recorder.close()
+
+
+class TestHostApiScoping:
+    """Windows lists the same physical mic under several host APIs.
+
+    The settings list only shows WASAPI devices, so resolving a saved name must
+    prefer the WASAPI copy rather than the MME one that happens to share a name.
+    """
+
+    def test_prefers_match_on_the_preferred_host_api(self):
+        # index 0 = MME copy (host api 0), index 1 = WASAPI copy (host api 2)
+        pa = _FakePA([("Blue Yeti", 1, 0), ("Blue Yeti", 1, 2)])
+        assert find_input_device_by_name(pa, "Blue Yeti", preferred_host_api=2) == 1
+
+    def test_falls_back_to_any_host_api_when_preferred_has_no_match(self):
+        pa = _FakePA([("Blue Yeti", 1, 0)])
+        assert find_input_device_by_name(pa, "Blue Yeti", preferred_host_api=2) == 0
+
+    def test_without_preference_lowest_index_still_wins(self):
+        pa = _FakePA([("Blue Yeti", 1, 0), ("Blue Yeti", 1, 2)])
+        assert find_input_device_by_name(pa, "Blue Yeti") == 0

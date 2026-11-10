@@ -20,13 +20,34 @@ CHUNK_SIZE = 512  # ~32ms @ 16kHz - small for low latency
 PREROLL_SECONDS = 0.6
 
 
-def find_input_device_by_name(pa, name: str) -> int | None:
+def find_preferred_host_api(pa) -> int | None:
+    """Index of the WASAPI host API, or None.
+
+    The settings list is built from WASAPI because it carries full device
+    names, so device lookup must use the same host API or a saved name can
+    resolve to the MME copy of the same physical microphone.
+    """
+    try:
+        for h in range(pa.get_host_api_count()):
+            if "WASAPI" in pa.get_host_api_info_by_index(h).get("name", ""):
+                return h
+    except Exception:
+        pass
+    return None
+
+
+def find_input_device_by_name(pa, name: str, preferred_host_api: int | None = None) -> int | None:
     """Return the index of the input device called *name*, or None.
 
     Device indices are not stable — they renumber whenever audio devices are
     added or removed — so the name is what we persist and this is how we turn
-    it back into an index at open time. When several devices share a name the
-    lowest index wins, so resolution is deterministic.
+    it back into an index at open time.
+
+    Windows exposes the same physical microphone under several host APIs, so a
+    match on *preferred_host_api* wins. Failing that, the lowest matching index
+    wins, which keeps resolution deterministic when devices genuinely share a
+    name (two identical USB mics, say). Picking one and saying which device is
+    in use beats refusing to record.
     """
     if not name:
         return None
@@ -34,6 +55,8 @@ def find_input_device_by_name(pa, name: str) -> int | None:
         count = pa.get_device_count()
     except Exception:
         return None
+
+    fallback: int | None = None
     for i in range(count):
         try:
             info = pa.get_device_info_by_index(i)
@@ -41,9 +64,16 @@ def find_input_device_by_name(pa, name: str) -> int | None:
             continue
         if info.get("maxInputChannels", 0) <= 0:
             continue
-        if info.get("name") == name:
-            return int(info.get("index", i))
-    return None
+        if info.get("name") != name:
+            continue
+
+        index = int(info.get("index", i))
+        if preferred_host_api is not None and info.get("hostApi") == preferred_host_api:
+            return index
+        if fallback is None:
+            fallback = index
+
+    return fallback
 
 
 class MicRecorder:
@@ -103,7 +133,9 @@ class MicRecorder:
         callers can tell the user instead of silently recording from elsewhere.
         """
         if self._device_name:
-            index = find_input_device_by_name(pa, self._device_name)
+            index = find_input_device_by_name(
+                pa, self._device_name, preferred_host_api=find_preferred_host_api(pa)
+            )
             if index is not None:
                 self._requested_device_missing = False
                 return index

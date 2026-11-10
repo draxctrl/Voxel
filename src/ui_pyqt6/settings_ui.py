@@ -688,13 +688,10 @@ class SettingsWindow(QWidget):
             matched_by_name = False
             seen_names: set[str] = set()
 
-            # Find WASAPI host API (has full device names), fall back to default
-            wasapi_idx = None
-            for h in range(pa.get_host_api_count()):
-                host = pa.get_host_api_info_by_index(h)
-                if "WASAPI" in host.get("name", ""):
-                    wasapi_idx = h
-                    break
+            # Same helper the recorder resolves names with, so the list the user
+            # picks from and the device actually opened cannot disagree.
+            from src.mic_recorder import find_preferred_host_api
+            wasapi_idx = find_preferred_host_api(pa)
             target_host = wasapi_idx if wasapi_idx is not None else pa.get_default_host_api_info().get("index", 0)
 
             for i in range(pa.get_device_count()):
