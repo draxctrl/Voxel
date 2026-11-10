@@ -12,7 +12,7 @@ import threading
 from typing import Callable
 
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QObject, QSize
-from PyQt6.QtGui import QFont, QIcon, QFontDatabase, QPainter, QPen, QColor, QPainterPath
+from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -21,7 +21,6 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QComboBox,
-    QCheckBox,
     QFrame,
     QSizePolicy,
     QApplication,
@@ -192,40 +191,25 @@ class SettingsWindow(QWidget):
         header_row.addLayout(header_text, stretch=1)
 
         # Header buttons
-        _small_btn = (
-            f"background-color: {current_palette()['separator']}; color: {current_palette()['secondary']}; "
-            f"border-radius: 4px; font-size: 11px; "
-            f"padding: 3px 10px; min-height: 0; min-width: 0;"
-        )
-        _small_btn_hover = f"background-color: #333; color: {current_palette()['text']};"
-
-        history_btn = QPushButton("History")
-        history_btn.setStyleSheet(f"QPushButton {{ {_small_btn} }} QPushButton:hover {{ {_small_btn_hover} }}")
-        history_btn.clicked.connect(self._open_history)
-        header_row.addWidget(history_btn, 0, Qt.AlignmentFlag.AlignVCenter)
+        self._history_btn = QPushButton("History")
+        self._history_btn.clicked.connect(self._open_history)
+        header_row.addWidget(self._history_btn, 0, Qt.AlignmentFlag.AlignVCenter)
 
         header_row.addSpacing(4)
 
-        stats_btn = QPushButton("Stats")
-        stats_btn.setStyleSheet(f"QPushButton {{ {_small_btn} }} QPushButton:hover {{ {_small_btn_hover} }}")
-        stats_btn.clicked.connect(self._open_stats)
-        header_row.addWidget(stats_btn, 0, Qt.AlignmentFlag.AlignVCenter)
+        self._stats_btn = QPushButton("Stats")
+        self._stats_btn.clicked.connect(self._open_stats)
+        header_row.addWidget(self._stats_btn, 0, Qt.AlignmentFlag.AlignVCenter)
 
         header_row.addSpacing(4)
 
-        help_btn = QLabel("?")
-        help_btn.setFixedSize(24, 24)
-        help_btn.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        help_btn.setToolTip("Help & FAQ")
-        help_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        help_btn.setStyleSheet(
-            f"QLabel {{ background-color: transparent; color: {current_palette()['accent']}; "
-            f"border: 1.5px solid {current_palette()['accent']}; border-radius: 12px; "
-            f"font-size: 13px; font-weight: bold; }}"
-            f"QLabel:hover {{ background-color: #1e1e3e; }}"
-        )
-        help_btn.mousePressEvent = lambda e: self._show_help()
-        header_row.addWidget(help_btn, 0, Qt.AlignmentFlag.AlignVCenter)
+        self._help_btn = QLabel("?")
+        self._help_btn.setFixedSize(24, 24)
+        self._help_btn.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._help_btn.setToolTip("Help & FAQ")
+        self._help_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._help_btn.mousePressEvent = lambda e: self._show_help()
+        header_row.addWidget(self._help_btn, 0, Qt.AlignmentFlag.AlignVCenter)
 
         root_layout.addLayout(header_row)
 
@@ -454,17 +438,20 @@ class SettingsWindow(QWidget):
         root_layout.addSpacing(8)
         footer_row = QHBoxLayout()
 
-        coffee_label = QLabel('<a href="https://paypal.me/draxctrl" style="color: #777777; font-size: 11px; text-decoration: none;">Support this project</a>')
+        coffee_label = QLabel('<a href="https://paypal.me/draxctrl" style="font-size: 11px; text-decoration: none;">Support this project</a>')
         coffee_label.setOpenExternalLinks(True)
         footer_row.addWidget(coffee_label, 0, Qt.AlignmentFlag.AlignLeft)
 
         footer_row.addStretch(1)
 
         version_label = QLabel("v2.0")
-        version_label.setStyleSheet(f"color: {current_palette()['secondary']}; font-size: 11px;")
+        self._version_label = version_label
         footer_row.addWidget(version_label, 0, Qt.AlignmentFlag.AlignRight)
 
         root_layout.addLayout(footer_row)
+
+        # Inline styles for the few widgets the application stylesheet can't reach.
+        self._restyle()
 
 
     # ------------------------------------------------------------------
@@ -605,7 +592,6 @@ class SettingsWindow(QWidget):
         # Scrollable list of commands
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("QScrollArea { border: none; }")
         layout.addWidget(scroll, stretch=1)
 
         scroll_content = QWidget()
@@ -808,6 +794,36 @@ class SettingsWindow(QWidget):
         prefix = "\u2713" if success else "\u2717"
         self._set_status(f"{prefix}  {message}", colour)
 
+    def _restyle(self) -> None:
+        """Re-apply this window's own inline styles for the current palette.
+
+        Most chrome comes from the application stylesheet and updates by itself.
+        These few widgets carry inline styles, so without this they keep the
+        colours they were built with — a window opened after Windows switches to
+        light would show dark header buttons on a light background.
+        """
+        p = current_palette()
+
+        small = (
+            f"background-color: {p['separator']}; color: {p['secondary']}; "
+            f"border-radius: 4px; font-size: 11px; "
+            f"padding: 3px 10px; min-height: 0; min-width: 0;"
+        )
+        hover = f"background-color: {p['accent']}; color: #FFFFFF;"
+        for btn in (self._history_btn, self._stats_btn):
+            btn.setStyleSheet(
+                f"QPushButton {{ {small} }} QPushButton:hover {{ {hover} }}"
+            )
+
+        self._help_btn.setStyleSheet(
+            f"QLabel {{ background-color: transparent; color: {p['accent']}; "
+            f"border: 1.5px solid {p['accent']}; border-radius: 12px; "
+            f"font-size: 13px; font-weight: bold; }}"
+            f"QLabel:hover {{ background-color: {p['card_alt']}; }}"
+        )
+
+        self._version_label.setStyleSheet(f"color: {p['secondary']}; font-size: 11px;")
+
     def _sync_offline_state(self) -> None:
         """Grey out Dictation Mode while Offline mode is on, and say why.
 
@@ -848,7 +864,7 @@ class SettingsWindow(QWidget):
         btn.setObjectName("capture_btn_recording")
         btn.setStyleSheet(
             f"background-color: {current_palette()['error']}; border-radius: 8px; "
-            f"font-family: 'Segoe UI'; font-size: 12px; font-weight: bold; "
+            f"font-size: 12px; font-weight: 600; "
             f"color: #FFFFFF; min-height: 28px; padding: 6px 18px;"
         )
         edit.setText("Press your hotkey combo…")

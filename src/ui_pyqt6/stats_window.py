@@ -20,7 +20,7 @@ from PyQt6.QtWidgets import (
     QApplication,
 )
 
-from src.ui_pyqt6.theme import BG, CARD, BORDER, INPUT_BG, TEXT, SUBTLE, ACCENT, ACCENT_HOVER, QSS
+from src.ui_pyqt6.theme import current_palette
 from src.history import HistoryStore
 
 
@@ -157,7 +157,7 @@ class StatsWindow(QWidget):
         """Create a single stat card widget."""
         card = QFrame()
         card.setStyleSheet(
-            f"QFrame {{ background-color: {CARD}; border: 1px solid {BORDER}; border-radius: 10px; }}"
+            f"QFrame {{ background-color: {current_palette()['card']}; border: 1px solid {current_palette()['separator']}; border-radius: 10px; }}"
         )
 
         layout = QHBoxLayout(card)
@@ -166,12 +166,12 @@ class StatsWindow(QWidget):
 
         # Label on the left
         name_lbl = QLabel(label_text)
-        name_lbl.setStyleSheet(f"color: {SUBTLE}; font-size: 12px; border: none;")
+        name_lbl.setStyleSheet(f"color: {current_palette()['secondary']}; font-size: 12px; border: none;")
         layout.addWidget(name_lbl, stretch=1)
 
         # Value on the right
         value_lbl = QLabel("--")
-        value_lbl.setStyleSheet(f"color: {ACCENT}; font-size: 18px; font-weight: bold; border: none;")
+        value_lbl.setStyleSheet(f"color: {current_palette()['accent']}; font-size: 18px; font-weight: bold; border: none;")
         value_lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         layout.addWidget(value_lbl)
 

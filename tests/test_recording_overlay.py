@@ -42,3 +42,41 @@ class TestMicText:
         overlay.set_mic_text(long_text)
         assert len(overlay._mic_label.text()) <= 28
         assert overlay._mic_label.text().endswith("…")
+
+
+class TestOverlayStaysTranslucent:
+    """The overlay is a floating hand-painted pill on a translucent window.
+
+    Styling bare QWidget on the QApplication reaches it (Qt type selectors match
+    subclasses) and paints an opaque rectangle over the pill — turning the
+    badge into a hard-edged slab on every dictation.
+    """
+
+    def _corner_and_centre(self, qapp, overlay):
+        from PyQt6.QtGui import QPixmap, QColor
+        overlay.show_recording()
+        qapp.processEvents()
+        overlay.resize(320, 110)
+        pm = QPixmap(overlay.size())
+        pm.fill(QColor(0, 255, 0))        # sentinel: survives only if transparent
+        overlay.render(pm)
+        img = pm.toImage()
+        return img.pixelColor(2, 2).name(), img.pixelColor(160, 55).name()
+
+    def test_corner_stays_transparent_under_an_applied_theme(self, qapp, overlay):
+        from src.ui_pyqt6.theme import apply_theme
+        for theme in ("dark", "light"):
+            apply_theme(qapp, theme)
+            corner, _ = self._corner_and_centre(qapp, overlay)
+            assert corner == "#00ff00", (
+                f"{theme}: overlay corner is {corner} - the window is opaque"
+            )
+
+    def test_card_is_still_painted_under_an_applied_theme(self, qapp, overlay):
+        from src.ui_pyqt6.theme import apply_theme
+        apply_theme(qapp, "light")
+        _, centre = self._corner_and_centre(qapp, overlay)
+        assert centre != LIGHT_BG, "overlay centre was flooded by the app background"
+
+
+LIGHT_BG = "#f2f2f7"

@@ -259,6 +259,10 @@ class RecordingOverlay(QWidget):
         )
         self.setWindowFlags(flags)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        # The application stylesheet styles bare QWidget, and Qt type selectors
+        # match subclasses — which paints an opaque rectangle over this window
+        # and its card, burying the hand-painted pill. Opt out explicitly.
+        self.setStyleSheet("QWidget { background: transparent; }")
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
 

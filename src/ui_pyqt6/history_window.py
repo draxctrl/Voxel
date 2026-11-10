@@ -26,9 +26,7 @@ from PyQt6.QtWidgets import (
     QMessageBox,
 )
 
-from src.ui_pyqt6.theme import (
-    BG, CARD, BORDER, INPUT_BG, TEXT, SUBTLE, ACCENT, ACCENT_HOVER, QSS,
-)
+from src.ui_pyqt6.theme import current_palette
 from src.history import HistoryStore
 
 logger = logging.getLogger(__name__)
@@ -69,7 +67,7 @@ class _HistoryCard(QFrame):
         self._entry_id: int = entry["id"]
 
         self.setStyleSheet(
-            f"_HistoryCard {{ background-color: {CARD}; border: 1px solid {BORDER}; "
+            f"_HistoryCard {{ background-color: {current_palette()['card']}; border: 1px solid {current_palette()['separator']}; "
             f"border-radius: 8px; }}"
         )
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -83,13 +81,13 @@ class _HistoryCard(QFrame):
         top_row.setSpacing(8)
 
         ts_label = QLabel(_format_timestamp(entry.get("timestamp", "")))
-        ts_label.setStyleSheet(f"color: {SUBTLE}; font-size: 11px; background: transparent;")
+        ts_label.setStyleSheet(f"color: {current_palette()['secondary']}; font-size: 11px; background: transparent;")
         top_row.addWidget(ts_label)
 
         profile = entry.get("profile", "default")
         badge = QLabel(profile)
         badge.setStyleSheet(
-            f"background-color: {ACCENT}; color: white; font-size: 10px; "
+            f"background-color: {current_palette()['accent']}; color: white; font-size: 10px; "
             f"font-weight: bold; border-radius: 4px; padding: 1px 6px;"
         )
         badge.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
@@ -102,9 +100,9 @@ class _HistoryCard(QFrame):
         copy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         copy_btn.setFixedHeight(24)
         copy_btn.setStyleSheet(
-            f"QPushButton {{ background-color: {ACCENT}; color: white; font-size: 11px; "
+            f"QPushButton {{ background-color: {current_palette()['accent']}; color: white; font-size: 11px; "
             f"border-radius: 4px; padding: 2px 10px; font-weight: bold; min-height: 20px; }}"
-            f"QPushButton:hover {{ background-color: {ACCENT_HOVER}; }}"
+            f"QPushButton:hover {{ background-color: {current_palette()['accent_hover']}; }}"
         )
         copy_btn.clicked.connect(self._copy_text)
         top_row.addWidget(copy_btn)
@@ -115,9 +113,9 @@ class _HistoryCard(QFrame):
         del_btn.setFixedSize(24, 24)
         del_btn.setToolTip("Delete this entry")
         del_btn.setStyleSheet(
-            f"QPushButton {{ background-color: transparent; color: {SUBTLE}; font-size: 16px; "
+            f"QPushButton {{ background-color: transparent; color: {current_palette()['secondary']}; font-size: 16px; "
             f"border: none; border-radius: 4px; padding: 0; min-height: 20px; }}"
-            f"QPushButton:hover {{ color: #ef4444; background-color: {BORDER}; }}"
+            f"QPushButton:hover {{ color: #ef4444; background-color: {current_palette()['separator']}; }}"
         )
         del_btn.clicked.connect(lambda: self.delete_requested.emit(self._entry_id))
         top_row.addWidget(del_btn)
@@ -129,7 +127,7 @@ class _HistoryCard(QFrame):
         preview = cleaned[:_MAX_PREVIEW] + "..." if len(cleaned) > _MAX_PREVIEW else cleaned
         text_label = QLabel(preview)
         text_label.setWordWrap(True)
-        text_label.setStyleSheet(f"color: {TEXT}; font-size: 12px; background: transparent;")
+        text_label.setStyleSheet(f"color: {current_palette()['text']}; font-size: 12px; background: transparent;")
         layout.addWidget(text_label)
 
     def _copy_text(self) -> None:
@@ -227,7 +225,7 @@ class HistoryWindow(QWidget):
         self._empty_label = QLabel("No dictations yet")
         self._empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._empty_label.setStyleSheet(
-            f"color: {SUBTLE}; font-size: 15px; padding: 40px; background: transparent;"
+            f"color: {current_palette()['secondary']}; font-size: 15px; padding: 40px; background: transparent;"
         )
         self._empty_label.hide()
         root.addWidget(self._empty_label)
@@ -237,7 +235,7 @@ class HistoryWindow(QWidget):
         bottom.setSpacing(12)
 
         self._count_label = QLabel("0 entries")
-        self._count_label.setStyleSheet(f"color: {SUBTLE}; font-size: 11px; background: transparent;")
+        self._count_label.setStyleSheet(f"color: {current_palette()['secondary']}; font-size: 11px; background: transparent;")
         bottom.addWidget(self._count_label)
 
         bottom.addStretch()
@@ -245,8 +243,8 @@ class HistoryWindow(QWidget):
         clear_btn = QPushButton("Clear All")
         clear_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         clear_btn.setStyleSheet(
-            f"QPushButton {{ background-color: transparent; color: {SUBTLE}; "
-            f"font-size: 12px; border: 1px solid {BORDER}; border-radius: 6px; "
+            f"QPushButton {{ background-color: transparent; color: {current_palette()['secondary']}; "
+            f"font-size: 12px; border: 1px solid {current_palette()['separator']}; border-radius: 6px; "
             f"padding: 4px 14px; min-height: 24px; }}"
             f"QPushButton:hover {{ color: #ef4444; border-color: #ef4444; }}"
         )

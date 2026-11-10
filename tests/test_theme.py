@@ -178,3 +178,79 @@ class TestApplyTheme:
     def test_defaults_to_the_system_theme_when_none_given(self, qapp, monkeypatch):
         monkeypatch.setattr("src.ui_pyqt6.theme.detect_system_theme", lambda: "light")
         assert apply_theme(qapp) == "light"
+
+
+#: Colours that only ever belong to a dark UI. If one of these survives in a
+#: widget's own stylesheet after switching to light, that widget is stranded.
+_DARK_ONLY = (
+    "#1C1C1E", "#2E2E31", "#39393D", "#48484A",   # dark palette
+    "#1a1a1a", "#2a2a2a", "#0f0f0f", "#111111",   # legacy flat-dark palette
+    "#e8e8e8", "#777777", "#333", "#1e1e3e",      # legacy literals
+)
+
+
+def _stranded_dark_styles(widget):
+    """Child stylesheets still carrying dark-only colours."""
+    found = []
+    for child in widget.findChildren(object):
+        sheet = getattr(child, "styleSheet", None)
+        if sheet is None:
+            continue
+        try:
+            text = sheet()
+        except TypeError:
+            continue
+        for token in _DARK_ONLY:
+            if token.lower() in text.lower():
+                found.append((type(child).__name__, token, text[:60]))
+                break
+    return found
+
+
+class TestNoHalfThemedWindows:
+    """Review Focus 4: a theme change must restyle a window completely.
+
+    Asserting on qapp.styleSheet() alone cannot fail for widgets carrying their
+    own inline styles — which is the entire failure mode.
+    """
+
+    def _settings(self, tmp_path):
+        from src.config import Config
+        from src.ui_pyqt6.settings_ui import SettingsWindow
+        cfg = Config(config_path=str(tmp_path / "c.json"))
+        cfg.load()
+        return SettingsWindow(config=cfg, on_save=lambda: None,
+                              on_validate_key=lambda k: True, on_quit=lambda: None)
+
+    def _history_and_stats(self, tmp_path):
+        from src.history import HistoryStore
+        from src.ui_pyqt6.history_window import HistoryWindow
+        from src.ui_pyqt6.stats_window import StatsWindow
+        store = HistoryStore(db_path=str(tmp_path / "h.db"))
+        return HistoryWindow(store), StatsWindow(store)
+
+    def test_settings_has_no_stranded_dark_styles_in_light(self, qapp, tmp_path):
+        apply_theme(qapp, "light")
+        stranded = _stranded_dark_styles(self._settings(tmp_path))
+        assert stranded == [], f"stranded dark styles: {stranded}"
+
+    def test_history_and_stats_have_no_stranded_dark_styles_in_light(self, qapp, tmp_path):
+        apply_theme(qapp, "light")
+        history, stats = self._history_and_stats(tmp_path)
+        assert _stranded_dark_styles(history) == []
+        assert _stranded_dark_styles(stats) == []
+
+    def test_switching_theme_restyles_an_already_built_window(self, qapp, tmp_path):
+        """The real scenario: Voxel is running when Windows flips to light."""
+        apply_theme(qapp, "dark")
+        window = self._settings(tmp_path)
+        apply_theme(qapp, "light")
+        stranded = _stranded_dark_styles(window)
+        assert stranded == [], f"stranded after switch: {stranded}"
+
+
+class TestLegacyConstantsRemoved:
+    def test_theme_no_longer_exports_the_flat_dark_palette(self):
+        import src.ui_pyqt6.theme as t
+        for name in ("BG", "CARD", "BORDER", "INPUT_BG", "TEXT", "SUBTLE", "QSS"):
+            assert not hasattr(t, name), f"{name} is a leftover flat-dark constant"
