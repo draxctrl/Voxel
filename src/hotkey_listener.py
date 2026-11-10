@@ -166,6 +166,10 @@ class HotkeyListener:
             self._is_held = True
             logger.info("Hotkey pressed (toggle)")
             self._on_press_cb()
+            # Same safety net hold mode uses: if the key-up event never arrives,
+            # _is_held would stick and every later press would be ignored,
+            # leaving the hotkey dead until restart.
+            self._start_toggle_rearm_poll()
             return
 
         if self._is_held:
@@ -200,6 +204,28 @@ class HotkeyListener:
 
         logger.info("Hotkey released after %.0fms", hold_duration * 1000)
         self._on_release_cb()
+
+    def _rearm_toggle(self) -> None:
+        """Clear the press-edge latch once the keys are physically up.
+
+        Unlike hold mode's poll, this fires no callback — in toggle mode the
+        recording is stopped by the *next* press, not by letting go.
+        """
+        if not self._is_held:
+            return
+        if self._any_modifier_variant_held() and self._trigger_still_held():
+            return
+        logger.debug("Toggle re-armed via polling fallback")
+        self._is_held = False
+
+    def _start_toggle_rearm_poll(self) -> None:
+        def _poll():
+            while self._is_held:
+                time.sleep(0.05)
+                self._rearm_toggle()
+
+        t = threading.Thread(target=_poll, daemon=True)
+        t.start()
 
     def _start_release_poll(self) -> None:
         """Poll physical key state to catch releases that pynput misses."""

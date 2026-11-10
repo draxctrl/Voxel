@@ -322,6 +322,45 @@ class VoxelApp:
             self._offline_transcriber.load_model()
         return self._offline_transcriber.transcribe(audio_bytes, language=language)
 
+    def _report_mic_fallback(self) -> None:
+        """Say which microphone is actually in use, and warn if it isn't the chosen one.
+
+        Falling back silently is what made a renumbered device look like a broken
+        app, so the fallback is always visible: on the recording overlay, where
+        the user is looking while they talk, and in Settings.
+        """
+        active = getattr(self._recorder, "active_device_name", None)
+        missing = getattr(self._recorder, "requested_device_missing", False)
+
+        # Upgrading users have only a legacy device index. Record the name now
+        # so the next device change can't silently move them to another mic.
+        if not missing:
+            try:
+                self._config.backfill_mic_name(active)
+            except Exception as e:
+                logger.debug("Could not backfill mic name: %s", e)
+
+        if missing:
+            wanted = self._config.get("mic_device_name") or "Saved microphone"
+            using = active or "default microphone"
+            logger.warning("Microphone %r not found; using %r", wanted, using)
+            message = f"⚠ {wanted} not found — using {using}"
+        elif active:
+            message = active
+        else:
+            return
+
+        try:
+            self._overlay.set_mic_text(message)
+        except Exception as e:
+            logger.debug("Could not set overlay mic text: %s", e)
+
+        if missing:
+            try:
+                self._settings_window.show_warning(message)
+            except Exception as e:
+                logger.debug("Could not show mic warning in settings: %s", e)
+
     def _resolve_profile(self, app_name: str | None) -> tuple[str, dict]:
         """Which dictation mode this utterance runs under."""
         return resolve_effective_profile(

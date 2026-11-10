@@ -100,13 +100,17 @@ class TestUndoHotkeyRemoved:
 
 
 class TestToggleActivationState:
-    """Toggle state is derived from the recorder, never mirrored in a flag."""
+    """Toggle state is derived from the recorder, never mirrored in a flag.
+
+    These drive the real VoxelApp._on_hotkey_trigger. An earlier version of
+    this test reimplemented the logic and asserted against its own copy, so it
+    would have passed even if the production code regressed.
+    """
 
     class _FakeRecorder:
         def __init__(self):
             self.is_recording = False
             self.starts = 0
-            self.stops = 0
 
         def start(self):
             self.is_recording = True
@@ -114,35 +118,94 @@ class TestToggleActivationState:
 
         def stop(self):
             self.is_recording = False
-            self.stops += 1
+            return None
 
-    def _toggle(self, app):
-        """Mirror of VoxelApp._on_hotkey_trigger against a fake recorder."""
-        if app.is_recording:
-            app.stop()
-        else:
-            app.start()
+        def get_rms(self):
+            return 0.0
+
+    def _make_app(self):
+        """A VoxelApp with only the collaborators the hotkey path touches."""
+        import time
+        from src.main import VoxelApp
+
+        app = VoxelApp.__new__(VoxelApp)
+        app._recorder = self._FakeRecorder()
+        app._injector = MagicMock()
+        app._injector.is_desktop_focused.return_value = False
+        app._app_detector = MagicMock()
+        app._app_detector.get_active_app.return_value = "code"
+        app._tray = MagicMock()
+        app._overlay = MagicMock()
+        app._max_record_timer = None
+        app._recording_start_time = time.time()
+        return app
+
+    def _cleanup(self, app):
+        if getattr(app, "_max_record_timer", None) is not None:
+            app._max_record_timer.cancel()
 
     def test_press_starts_then_press_stops(self):
-        rec = self._FakeRecorder()
-        self._toggle(rec)
-        assert rec.is_recording is True
-        self._toggle(rec)
-        assert rec.is_recording is False
-        assert (rec.starts, rec.stops) == (1, 1)
+        app = self._make_app()
+        try:
+            app._on_hotkey_trigger()
+            assert app._recorder.is_recording is True
+            app._on_hotkey_trigger()
+            assert app._recorder.is_recording is False
+            assert app._recorder.starts == 1
+        finally:
+            self._cleanup(app)
 
     def test_press_after_max_duration_autostop_starts_again(self):
-        rec = self._FakeRecorder()
-        self._toggle(rec)            # user starts
-        rec.stop()                   # MAX_RECORDING_DURATION fires behind our back
-        assert rec.is_recording is False
+        """The 2-minute cap stops the recorder behind the listener's back; the
+        next press must START, not be swallowed as a 'stop'."""
+        app = self._make_app()
+        try:
+            app._on_hotkey_trigger()          # user starts
+            app._recorder.stop()              # MAX_RECORDING_DURATION fires
+            assert app._recorder.is_recording is False
 
-        self._toggle(rec)            # next press must START, not be eaten as a stop
-        assert rec.is_recording is True
-        assert rec.starts == 2
+            app._on_hotkey_trigger()          # next press
+            assert app._recorder.is_recording is True
+            assert app._recorder.starts == 2
+        finally:
+            self._cleanup(app)
 
 
 class TestActivationModeConfig:
     def test_defaults_to_hold(self):
         from src.config import DEFAULT_CONFIG
         assert DEFAULT_CONFIG["activation_mode"] == "hold"
+
+
+class TestVoxelAppMethodsResolve:
+    """Every self.<name>() call in main.py must resolve on VoxelApp.
+
+    A removal that deletes a method but leaves its call sites passes import
+    checks and every unit test, then aborts at runtime inside a Qt slot. That
+    happened once; this makes it impossible to repeat quietly.
+    """
+
+    def test_every_self_call_in_main_resolves(self):
+        import ast
+        import inspect
+        import src.main as main_mod
+        from src.main import VoxelApp
+
+        source = inspect.getsource(main_mod)
+        tree = ast.parse(source)
+
+        called = set()
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "self"
+            ):
+                called.add(node.func.attr)
+
+        missing = sorted(
+            name for name in called
+            if not hasattr(VoxelApp, name) and not name.startswith("__")
+        )
+        assert missing == [], f"main.py calls self.{missing} which VoxelApp does not define"

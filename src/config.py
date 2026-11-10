@@ -92,5 +92,29 @@ class Config:
     def set(self, key: str, value) -> None:
         self._data[key] = value
 
+    def backfill_mic_name(self, active_device_name: str | None) -> bool:
+        """Record the name of a device that was only ever saved as an index.
+
+        Upgrading users have ``mic_device`` but no ``mic_device_name``, so they
+        would keep the old behaviour — a renumbered index silently selecting a
+        different microphone — until they happened to re-save their settings.
+
+        Deliberately does nothing when no device was ever chosen: that means
+        "follow the system default", and pinning a name there would break the
+        user when they change their Windows default. Returns True if it saved.
+        """
+        if not active_device_name:
+            return False
+        if self._data.get("mic_device_name"):
+            return False
+        if self._data.get("mic_device") is None:
+            return False
+
+        logger.info("Recording microphone name %r for a legacy index-only config",
+                    active_device_name)
+        self._data["mic_device_name"] = active_device_name
+        self.save()
+        return True
+
     def is_configured(self) -> bool:
         return bool(self._data.get("api_key"))

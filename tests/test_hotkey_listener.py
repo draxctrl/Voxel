@@ -158,3 +158,43 @@ class TestActivationModes:
         listener._handle_release()
         listener._handle_press()   # a genuine second press
         assert on_press.call_count == 2
+
+    def test_toggle_rearms_when_keys_are_physically_released(self):
+        """If pynput misses the key-up, _is_held sticks True and the hotkey dies.
+
+        Hold mode has a polling fallback for exactly this; toggle mode needs one
+        too, but only to re-arm — it must not fire the callback.
+        """
+        on_press, on_release = MagicMock(), MagicMock()
+        listener = HotkeyListener(
+            hotkey_str="<ctrl>+<shift>+space",
+            on_press=on_press, on_release=on_release,
+            activation_mode="toggle",
+        )
+
+        listener._handle_press()
+        assert listener._is_held is True
+        on_press.reset_mock()
+
+        # Keys are physically up, but no release event ever arrived.
+        with patch.object(listener, "_any_modifier_variant_held", return_value=False), \
+             patch.object(listener, "_trigger_still_held", return_value=False):
+            listener._rearm_toggle()
+
+        assert listener._is_held is False
+        on_press.assert_not_called()
+        on_release.assert_not_called()
+
+    def test_toggle_does_not_rearm_while_keys_are_still_down(self):
+        listener = HotkeyListener(
+            hotkey_str="<ctrl>+<shift>+space",
+            on_press=MagicMock(), on_release=MagicMock(),
+            activation_mode="toggle",
+        )
+        listener._handle_press()
+
+        with patch.object(listener, "_any_modifier_variant_held", return_value=True), \
+             patch.object(listener, "_trigger_still_held", return_value=True):
+            listener._rearm_toggle()
+
+        assert listener._is_held is True

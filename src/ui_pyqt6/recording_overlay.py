@@ -71,6 +71,20 @@ _FONT_TIMER_PT = 11
 # Helper – retrieve the default input device name via PyAudio
 # ---------------------------------------------------------------------------
 
+MAX_MIC_CHARS = 28
+
+
+def _truncate_mic_name(text: str) -> str:
+    """Keep the device line inside the overlay card.
+
+    Warning strings are much longer than device names, so this applies to them
+    too rather than only to the name read at startup.
+    """
+    if len(text) > MAX_MIC_CHARS:
+        return text[:MAX_MIC_CHARS - 1] + "…"
+    return text
+
+
 def _get_mic_name() -> str:
     try:
         pa = pyaudio.PyAudio()
@@ -254,10 +268,7 @@ class RecordingOverlay(QWidget):
         self._elapsed_seconds = 0
 
         # --- mic name -------------------------------------------------------
-        self._mic_name = _get_mic_name()
-        _max_mic_chars = 28
-        if len(self._mic_name) > _max_mic_chars:
-            self._mic_name = self._mic_name[:_max_mic_chars - 1] + "…"
+        self._mic_name = _truncate_mic_name(_get_mic_name())
 
         # --- cross-thread signals -------------------------------------------
         self._signals = _OverlaySignals()
@@ -270,7 +281,7 @@ class RecordingOverlay(QWidget):
         self._build_ui()
 
         # _mic_label only exists once the UI is built
-        self._signals.set_mic_text_sig.connect(self._mic_label.setText)
+        self._signals.set_mic_text_sig.connect(self._on_set_mic_text)
 
         # --- timers ---------------------------------------------------------
         self._wave_timer = QTimer(self)
@@ -466,6 +477,15 @@ class RecordingOverlay(QWidget):
 
         # Auto-hide after 2 seconds
         QTimer.singleShot(2000, self._on_hide)
+
+    def _on_set_mic_text(self, text: str) -> None:
+        """Set the device line, and make it the value _on_hide() restores.
+
+        _on_hide resets the label from _mic_name, so updating only the label
+        would show a mic warning once and then lose it on the next recording.
+        """
+        self._mic_name = _truncate_mic_name(text)
+        self._mic_label.setText(self._mic_name)
 
     def _on_hide(self) -> None:
         self._is_recording = False

@@ -139,3 +139,48 @@ class TestProfileIdMigration:
         cfg.load()
 
         assert cfg.get("active_profile") == "my_own"
+
+
+class TestMicNameBackfill:
+    """An upgrading user has only a legacy index. Without a name, the whole
+    point of the change — surviving device renumbering — never reaches them."""
+
+    def test_backfills_name_when_only_a_legacy_index_exists(self, tmp_path):
+        config_path = tmp_path / "config.json"
+        config_path.write_text(json.dumps({"mic_device": 3}), encoding="utf-8")
+        cfg = Config(config_path=str(config_path))
+        cfg.load()
+
+        assert cfg.backfill_mic_name("Blue Yeti") is True
+        assert cfg.get("mic_device_name") == "Blue Yeti"
+
+    def test_does_not_overwrite_an_existing_name(self, tmp_path):
+        config_path = tmp_path / "config.json"
+        config_path.write_text(
+            json.dumps({"mic_device": 3, "mic_device_name": "Blue Yeti"}), encoding="utf-8"
+        )
+        cfg = Config(config_path=str(config_path))
+        cfg.load()
+
+        assert cfg.backfill_mic_name("Realtek Mic") is False
+        assert cfg.get("mic_device_name") == "Blue Yeti"
+
+    def test_does_not_pin_a_user_who_never_chose_a_device(self, tmp_path):
+        # No index and no name means "just use the system default" — pinning a
+        # name here would break them when they change their Windows default.
+        config_path = tmp_path / "config.json"
+        config_path.write_text(json.dumps({}), encoding="utf-8")
+        cfg = Config(config_path=str(config_path))
+        cfg.load()
+
+        assert cfg.backfill_mic_name("Realtek Mic") is False
+        assert cfg.get("mic_device_name") is None
+
+    def test_ignores_an_empty_active_name(self, tmp_path):
+        config_path = tmp_path / "config.json"
+        config_path.write_text(json.dumps({"mic_device": 3}), encoding="utf-8")
+        cfg = Config(config_path=str(config_path))
+        cfg.load()
+
+        assert cfg.backfill_mic_name(None) is False
+        assert cfg.get("mic_device_name") is None

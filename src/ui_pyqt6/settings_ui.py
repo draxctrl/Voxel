@@ -386,6 +386,13 @@ class SettingsWindow(QWidget):
 
     def show(self, _root=None) -> None:  # noqa: ANN001
         """Show (or raise) the settings window. _root is accepted for API compat but ignored."""
+        # The window is built once and reused, so the device list would otherwise
+        # be frozen at startup and a newly plugged-in mic could never be chosen.
+        try:
+            self._populate_mics()
+        except Exception as e:
+            logger.warning("Could not refresh microphone list: %s", e)
+
         if self.isMinimized():
             self.showNormal()
             self.raise_()
@@ -726,7 +733,18 @@ class SettingsWindow(QWidget):
     # ------------------------------------------------------------------
 
     def _populate_mics(self) -> None:
-        """List available input devices using PyAudio. Prefer WASAPI for full names."""
+        """List available input devices using PyAudio. Prefer WASAPI for full names.
+
+        Safe to call repeatedly — the list is rebuilt, so newly plugged-in mics
+        appear when Settings is reopened.
+
+        ``_mic_names`` maps each combo row to the *real* device name, kept apart
+        from the display text so a disconnected device can be shown as
+        "X (not connected)" while still saving as "X", and so the error
+        placeholder never gets written to the config as if it were a device.
+        """
+        self._mic_combo.clear()
+        self._mic_names: dict[int, str] = {}
         try:
             import pyaudio
             pa = pyaudio.PyAudio()
@@ -755,6 +773,7 @@ class SettingsWindow(QWidget):
                 seen_names.add(name)
                 idx = info.get("index", i)
                 self._mic_combo.addItem(name, userData=idx)
+                self._mic_names[self._mic_combo.count() - 1] = name
                 # Name wins over the index, which may now point elsewhere.
                 if saved_name and name == saved_name:
                     selected = self._mic_combo.count() - 1
@@ -766,11 +785,24 @@ class SettingsWindow(QWidget):
                         and idx == default_idx:
                     selected = self._mic_combo.count() - 1
 
-            # If nothing matched saved device, select first
+            # A saved device that isn't currently present stays in the list and
+            # stays selected. Otherwise opening Settings and pressing Save for an
+            # unrelated reason would silently rewrite the user's choice to
+            # whatever happened to be listed first.
+            if saved_name and not matched_by_name:
+                self._mic_combo.addItem(f"{saved_name} (not connected)", userData=None)
+                row = self._mic_combo.count() - 1
+                self._mic_names[row] = saved_name
+                selected = row
+
             if self._mic_combo.count() > 0:
                 self._mic_combo.setCurrentIndex(selected)
             pa.terminate()
-        except Exception:
+        except Exception as e:
+            # Enumeration failed. Show a placeholder, but record no name for it
+            # so saving can't persist "Default Microphone" as a device name that
+            # will never resolve again.
+            logger.warning("Could not list input devices: %s", e)
             self._mic_combo.addItem("Default Microphone", userData=None)
 
     # ------------------------------------------------------------------
@@ -953,8 +985,12 @@ class SettingsWindow(QWidget):
             )
         self._config.set("activation_mode", activation)
         # Name is authoritative; the index is only a hint, since PyAudio
-        # renumbers devices whenever audio hardware changes.
-        self._config.set("mic_device_name", self._mic_combo.currentText() or None)
+        # renumbers devices whenever audio hardware changes. The name comes from
+        # _mic_names, not the display text, so "(not connected)" suffixes and
+        # the error placeholder are never written as device names.
+        self._config.set(
+            "mic_device_name", self._mic_names.get(self._mic_combo.currentIndex())
+        )
         self._config.set("mic_device", self._mic_combo.currentData())
         self._config.set("active_profile", self._profile_combo.currentData() or "default")
         self._config.set("auto_start", self._autostart_check.isChecked())
