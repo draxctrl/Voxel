@@ -5,7 +5,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
 
-from src.ui_pyqt6.theme import LIGHT, DARK, IOSSwitch
+from src.ui_pyqt6.theme import LIGHT, DARK, IOSSwitch, ArrowComboBox
 
 
 @pytest.fixture(scope="module")
@@ -60,3 +60,31 @@ class TestIOSSwitch:
             s.setChecked(checked)
             pixmap = QPixmap(s.size())
             s.render(pixmap)   # raises if paintEvent is broken
+
+
+class TestArrowComboBoxPopup:
+    """The popup used to be resized to a text-derived width and repositioned,
+    which is why the dropdowns read as detached from their field."""
+
+    def test_popup_is_never_narrower_than_the_field(self, qapp):
+        c = ArrowComboBox()
+        c.addItems(["a", "b"])
+        c.resize(300, 36)
+        assert c._popup_width() >= 300
+
+    def test_popup_grows_for_long_items(self, qapp):
+        c = ArrowComboBox()
+        c.addItem("a" * 120)
+        c.resize(120, 36)
+        assert c._popup_width() > 120
+
+    def test_popup_width_is_capped_to_stay_usable(self, qapp):
+        c = ArrowComboBox()
+        c.addItem("x" * 4000)
+        c.resize(120, 36)
+        assert c._popup_width() <= 900
+
+    def test_empty_combo_still_reports_the_field_width(self, qapp):
+        c = ArrowComboBox()
+        c.resize(240, 36)
+        assert c._popup_width() >= 240

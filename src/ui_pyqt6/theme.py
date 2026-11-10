@@ -642,18 +642,30 @@ QScrollArea {{
 class ArrowComboBox(QComboBox):
     """QComboBox that draws a visible chevron arrow and has a wide popup."""
 
-    def showPopup(self):
+    #: Beyond this the popup stops being a dropdown and starts being a wall.
+    MAX_POPUP_WIDTH = 900
+    #: Room for the item padding, the checkmark column and any icon.
+    ITEM_CHROME = 56
+
+    def _popup_width(self) -> int:
+        """How wide the popup should be: at least the field, never absurd.
+
+        The old version sized the popup from item text alone and then moved and
+        resized its top-level window, so it floated free of the control it
+        belonged to. Qt already aligns the popup to the field — it just needs
+        to be told a sensible width.
+        """
         fm = self.fontMetrics()
-        max_w = self.width()
+        widest = 0
         for i in range(self.count()):
-            text_w = fm.horizontalAdvance(self.itemText(i)) + 80
-            if text_w > max_w:
-                max_w = text_w
-        self.view().setMinimumWidth(max_w)
+            widest = max(widest, fm.horizontalAdvance(self.itemText(i)))
+        return min(max(self.width(), widest + self.ITEM_CHROME), self.MAX_POPUP_WIDTH)
+
+    def showPopup(self):  # noqa: N802
+        self.view().setMinimumWidth(self._popup_width())
+        # Deliberately no resize/move of the popup window: that is what made
+        # the dropdown look detached from its field.
         super().showPopup()
-        popup_window = self.view().window()
-        if popup_window:
-            popup_window.resize(max_w, popup_window.height())
 
     def paintEvent(self, event):
         super().paintEvent(event)
