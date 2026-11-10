@@ -13,7 +13,7 @@ DEFAULT_CONFIG = {
     "llm_model": "llama-3.3-70b-versatile",
     "mute_sound": False,
     "voice_commands": {},
-    "active_profile": "default",
+    "active_profile": "grammar_tidy",
     "profiles": {},
     "auto_profile": False,
     "app_profiles": {},
@@ -54,6 +54,30 @@ class Config:
                     self._data.update(saved)
             except (json.JSONDecodeError, OSError) as e:
                 logger.warning("Failed to load config from %s: %s", self._path, e)
+        self._migrate_profile_ids()
+
+    def _migrate_profile_ids(self) -> None:
+        """Point old mode ids at their replacements after consolidation.
+
+        Runs silently on load so an existing config keeps working rather than
+        landing on a mode the user never chose. Custom profile ids are left
+        alone; only ids we removed are rewritten.
+        """
+        from src.profiles import ProfileManager
+
+        active = self._data.get("active_profile")
+        if isinstance(active, str):
+            migrated = ProfileManager.migrate_profile_id(active)
+            if migrated != active:
+                logger.info("Migrated active profile '%s' -> '%s'", active, migrated)
+                self._data["active_profile"] = migrated
+
+        app_profiles = self._data.get("app_profiles")
+        if isinstance(app_profiles, dict):
+            self._data["app_profiles"] = {
+                app: ProfileManager.migrate_profile_id(pid) if isinstance(pid, str) else pid
+                for app, pid in app_profiles.items()
+            }
 
     def save(self) -> None:
         os.makedirs(os.path.dirname(self._path), exist_ok=True)

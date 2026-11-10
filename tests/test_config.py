@@ -92,3 +92,50 @@ class TestMicDeviceConfig:
 
         assert cfg.get("mic_device") == 3
         assert cfg.get("mic_device_name") is None
+
+
+class TestProfileIdMigration:
+    def test_active_profile_is_migrated_on_load(self, tmp_path):
+        config_path = tmp_path / "config.json"
+        config_path.write_text(json.dumps({"active_profile": "default"}), encoding="utf-8")
+
+        cfg = Config(config_path=str(config_path))
+        cfg.load()
+
+        assert cfg.get("active_profile") == "grammar_tidy"
+
+    def test_casual_migrates_to_grammar_only(self, tmp_path):
+        config_path = tmp_path / "config.json"
+        config_path.write_text(json.dumps({"active_profile": "casual"}), encoding="utf-8")
+
+        cfg = Config(config_path=str(config_path))
+        cfg.load()
+
+        assert cfg.get("active_profile") == "grammar_only"
+
+    def test_app_profile_values_are_migrated_on_load(self, tmp_path):
+        config_path = tmp_path / "config.json"
+        config_path.write_text(
+            json.dumps({"app_profiles": {"Code.exe": "casual", "OUTLOOK.EXE": "professional"}}),
+            encoding="utf-8",
+        )
+
+        cfg = Config(config_path=str(config_path))
+        cfg.load()
+
+        assert cfg.get("app_profiles") == {
+            "Code.exe": "grammar_only",
+            "OUTLOOK.EXE": "professional",
+        }
+
+    def test_custom_profile_id_is_left_alone(self, tmp_path):
+        config_path = tmp_path / "config.json"
+        config_path.write_text(
+            json.dumps({"active_profile": "my_own", "profiles": {"my_own": {"name": "Mine", "prompt": "p"}}}),
+            encoding="utf-8",
+        )
+
+        cfg = Config(config_path=str(config_path))
+        cfg.load()
+
+        assert cfg.get("active_profile") == "my_own"

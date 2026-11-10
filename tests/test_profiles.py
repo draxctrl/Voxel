@@ -6,7 +6,7 @@ from src.profiles import ProfileManager
 
 def _make_config(data=None):
     config = MagicMock()
-    store = {"active_profile": "default", "profiles": {}}
+    store = {"active_profile": "grammar_tidy", "profiles": {}}
     if data:
         store.update(data)
     config.get = lambda key, default=None: store.get(key, default)
@@ -23,12 +23,13 @@ class TestProfileManagerBuiltins:
     def test_list_profiles_returns_all_builtins(self):
         pm = ProfileManager(_make_config())
         profiles = pm.list_profiles()
-        assert "default" in profiles
+        assert "raw" in profiles
+        assert "grammar_only" in profiles
+        assert "grammar_tidy" in profiles
         assert "professional" in profiles
-        assert "casual" in profiles
         assert "code" in profiles
         assert "technical" in profiles
-        assert len(profiles) >= 5
+        assert len(profiles) == len(ProfileManager.BUILTIN_PROFILES)
 
     def test_builtin_profiles_have_name_and_prompt(self):
         pm = ProfileManager(_make_config())
@@ -42,7 +43,7 @@ class TestProfileManagerBuiltins:
 
     def test_is_builtin_true_for_builtins(self):
         pm = ProfileManager(_make_config())
-        assert pm.is_builtin("default") is True
+        assert pm.is_builtin("grammar_tidy") is True
         assert pm.is_builtin("professional") is True
 
     def test_is_builtin_false_for_custom(self):
@@ -54,7 +55,7 @@ class TestActiveProfile:
     def test_default_active_profile(self):
         pm = ProfileManager(_make_config())
         profile = pm.get_active_profile()
-        assert profile["name"] == "Default"
+        assert profile["name"] == "Grammar + tidy up"
 
     def test_get_active_prompt_returns_prompt_string(self):
         pm = ProfileManager(_make_config())
@@ -77,7 +78,7 @@ class TestActiveProfile:
         config = _make_config({"active_profile": "deleted_profile"})
         pm = ProfileManager(config)
         profile = pm.get_active_profile()
-        assert profile["name"] == "Default"
+        assert profile["name"] == "Grammar + tidy up"
 
 
 class TestCustomProfiles:
@@ -99,7 +100,7 @@ class TestCustomProfiles:
     def test_add_conflicting_builtin_raises(self):
         pm = ProfileManager(_make_config())
         with pytest.raises(ValueError, match="built-in"):
-            pm.add_profile("default", "Override", "prompt")
+            pm.add_profile("grammar_tidy", "Override", "prompt")
 
     def test_update_custom_profile(self):
         config = _make_config({"profiles": {"my_style": {"name": "Old", "prompt": "old"}}})
@@ -112,7 +113,7 @@ class TestCustomProfiles:
     def test_update_builtin_raises(self):
         pm = ProfileManager(_make_config())
         with pytest.raises(ValueError, match="built-in"):
-            pm.update_profile("default", "New", "prompt")
+            pm.update_profile("grammar_tidy", "New", "prompt")
 
     def test_update_nonexistent_raises(self):
         pm = ProfileManager(_make_config())
@@ -129,7 +130,7 @@ class TestCustomProfiles:
     def test_delete_builtin_raises(self):
         pm = ProfileManager(_make_config())
         with pytest.raises(ValueError, match="built-in"):
-            pm.delete_profile("default")
+            pm.delete_profile("grammar_tidy")
 
     def test_delete_nonexistent_raises(self):
         pm = ProfileManager(_make_config())
@@ -143,7 +144,7 @@ class TestCustomProfiles:
         })
         pm = ProfileManager(config)
         pm.delete_profile("tmp")
-        assert pm.get_active_profile()["name"] == "Default"
+        assert pm.get_active_profile()["name"] == "Grammar + tidy up"
 
     def test_custom_profiles_merge_with_builtins(self):
         config = _make_config({"profiles": {"extra": {"name": "Extra", "prompt": "p"}}})
@@ -151,4 +152,44 @@ class TestCustomProfiles:
         profiles = pm.list_profiles()
         assert len(profiles) == len(ProfileManager.BUILTIN_PROFILES) + 1
         assert "extra" in profiles
-        assert "default" in profiles
+        assert "grammar_tidy" in profiles
+
+
+class TestConsolidatedProfiles:
+    def test_grammar_modes_exist_and_are_separate(self):
+        builtins = ProfileManager.BUILTIN_PROFILES
+        assert "grammar_only" in builtins
+        assert "grammar_tidy" in builtins
+        assert builtins["grammar_only"]["prompt"] != builtins["grammar_tidy"]["prompt"]
+
+    def test_grammar_only_keeps_filler_words(self):
+        prompt = ProfileManager.BUILTIN_PROFILES["grammar_only"]["prompt"]
+        assert "{raw_transcript}" in prompt
+        # It must tell the model to KEEP filler words, not remove them.
+        assert "filler" in prompt.lower()
+        assert "keep" in prompt.lower()
+
+    def test_grammar_tidy_removes_filler_words(self):
+        prompt = ProfileManager.BUILTIN_PROFILES["grammar_tidy"]["prompt"]
+        assert "{raw_transcript}" in prompt
+        assert "remov" in prompt.lower()
+
+    def test_overlapping_legacy_profiles_are_gone(self):
+        assert "default" not in ProfileManager.BUILTIN_PROFILES
+        assert "casual" not in ProfileManager.BUILTIN_PROFILES
+
+    def test_raw_profile_survives_consolidation(self):
+        assert ProfileManager.BUILTIN_PROFILES["raw"]["prompt"] == "__RAW__"
+
+
+class TestProfileMigration:
+    def test_removed_ids_map_to_replacements(self):
+        assert ProfileManager.migrate_profile_id("default") == "grammar_tidy"
+        assert ProfileManager.migrate_profile_id("casual") == "grammar_only"
+
+    def test_surviving_ids_pass_through(self):
+        assert ProfileManager.migrate_profile_id("professional") == "professional"
+        assert ProfileManager.migrate_profile_id("raw") == "raw"
+
+    def test_unknown_custom_id_passes_through(self):
+        assert ProfileManager.migrate_profile_id("my_custom") == "my_custom"
