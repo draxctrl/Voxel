@@ -88,3 +88,29 @@ class TestArrowComboBoxPopup:
         c = ArrowComboBox()
         c.resize(240, 36)
         assert c._popup_width() >= 240
+
+
+class TestSwitchFollowsLiveTheme:
+    """A switch built after apply_theme must use the theme in force, not the
+    palette it was constructed with — otherwise light mode shows dark pills."""
+
+    def test_switch_created_after_apply_theme_uses_it(self, qapp):
+        from src.ui_pyqt6.theme import apply_theme
+        apply_theme(qapp, "light")
+        s = IOSSwitch("Run at login")          # created AFTER the theme
+        assert s._off_colour().name().lower() == LIGHT["switch_off"].lower()
+
+    def test_switch_tracks_a_later_theme_change(self, qapp):
+        from src.ui_pyqt6.theme import apply_theme
+        s = IOSSwitch("Run at login")
+        apply_theme(qapp, "dark")
+        assert s._off_colour().name().lower() == DARK["switch_off"].lower()
+        apply_theme(qapp, "light")
+        assert s._off_colour().name().lower() == LIGHT["switch_off"].lower()
+
+    def test_explicit_palette_still_wins(self, qapp):
+        from src.ui_pyqt6.theme import apply_theme
+        apply_theme(qapp, "light")
+        s = IOSSwitch("x")
+        s.set_palette(DARK)
+        assert s._off_colour().name().lower() == DARK["switch_off"].lower()

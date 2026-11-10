@@ -133,3 +133,22 @@ class TestMicListIdentity:
             window._save()
 
         assert window._config.get("mic_device_name") is None
+
+
+class TestLayoutFitsItsContent:
+    """Regressions the screenshots caught: Inter is wider than Segoe UI, and the
+    taller iOS switches stretched the column beside them."""
+
+    def test_voice_commands_button_is_not_clipped(self, window):
+        btn = window._voice_cmd_btn
+        needed = btn.fontMetrics().horizontalAdvance(btn.text())
+        assert btn.width() >= needed + 16, (
+            f"button is {btn.width()}px but the label needs {needed}px"
+        )
+
+    def test_language_label_sits_just_above_its_dropdown(self, window):
+        """The label and its combo must read as one control, not drift apart."""
+        window.resize(540, 820)
+        window.show()
+        gap = window._lang_combo.y() - (window._lang_title.y() + window._lang_title.height())
+        assert 0 <= gap <= 24, f"Language label is {gap}px from its dropdown"

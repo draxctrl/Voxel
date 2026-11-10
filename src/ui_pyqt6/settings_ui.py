@@ -326,10 +326,14 @@ class SettingsWindow(QWidget):
         self._populate_profiles()
         profile_row.addWidget(self._profile_combo, stretch=1)
 
-        voice_cmd_btn = QPushButton("Voice Commands")
-        voice_cmd_btn.setFixedSize(130, 36)
-        voice_cmd_btn.clicked.connect(self._show_voice_commands)
-        profile_row.addWidget(voice_cmd_btn)
+        self._voice_cmd_btn = QPushButton("Voice Commands")
+        self._voice_cmd_btn.setFixedHeight(36)
+        # Width follows the label: a fixed width clipped it once the font changed.
+        self._voice_cmd_btn.setMinimumWidth(
+            self._voice_cmd_btn.fontMetrics().horizontalAdvance("Voice Commands") + 36
+        )
+        self._voice_cmd_btn.clicked.connect(self._show_voice_commands)
+        profile_row.addWidget(self._voice_cmd_btn)
 
         root_layout.addLayout(profile_row)
 
@@ -352,9 +356,10 @@ class SettingsWindow(QWidget):
         # Language column
         lang_col = QVBoxLayout()
         lang_col.setSpacing(4)
-        lang_title = QLabel("Language")
-        lang_title.setObjectName("section_title")
-        lang_col.addWidget(lang_title)
+        self._lang_title = QLabel("Language")
+        self._lang_title.setObjectName("section_title")
+        lang_col.setAlignment(Qt.AlignmentFlag.AlignTop)
+        lang_col.addWidget(self._lang_title)
 
         self._lang_combo = ArrowComboBox()
         _LANGUAGES = [
@@ -388,6 +393,7 @@ class SettingsWindow(QWidget):
                 break
         self._lang_combo.setFixedHeight(36)
         lang_col.addWidget(self._lang_combo)
+        lang_col.addStretch(1)
 
         options_row.addLayout(lang_col, stretch=1)
 
@@ -448,7 +454,7 @@ class SettingsWindow(QWidget):
         root_layout.addSpacing(8)
         footer_row = QHBoxLayout()
 
-        coffee_label = QLabel('<a href="https://paypal.me/draxctrl" style="color: #777777; font-size: 11px; text-decoration: none;">Support this project ☕</a>')
+        coffee_label = QLabel('<a href="https://paypal.me/draxctrl" style="color: #777777; font-size: 11px; text-decoration: none;">Support this project</a>')
         coffee_label.setOpenExternalLinks(True)
         footer_row.addWidget(coffee_label, 0, Qt.AlignmentFlag.AlignLeft)
 

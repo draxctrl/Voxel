@@ -732,21 +732,28 @@ class IOSSwitch(QCheckBox):
 
     def __init__(self, text: str = "", parent: QWidget | None = None) -> None:
         super().__init__(text, parent)
-        self._palette_tokens: dict[str, str] = DARK
+        # None means "follow the applied theme". Holding a copy meant a switch
+        # built after apply_theme kept the construction-time palette — light
+        # mode rendered dark pills.
+        self._palette_tokens: dict[str, str] | None = None
         # The native indicator is hidden; we draw the pill ourselves.
         self.setStyleSheet(
             f"QCheckBox::indicator {{ width: {self.TRACK_W}px; height: {self.TRACK_H}px; }}"
         )
 
     def set_palette(self, palette: dict[str, str]) -> None:
+        """Pin this switch to a specific palette, overriding the applied theme."""
         self._palette_tokens = palette
         self.update()
 
+    def _tokens(self) -> dict[str, str]:
+        return self._palette_tokens if self._palette_tokens is not None else current_palette()
+
     def _on_colour(self) -> QColor:
-        return QColor(self._palette_tokens["accent"])
+        return QColor(self._tokens()["accent"])
 
     def _off_colour(self) -> QColor:
-        return QColor(self._palette_tokens["switch_off"])
+        return QColor(self._tokens()["switch_off"])
 
     def sizeHint(self):  # noqa: N802
         hint = super().sizeHint()
