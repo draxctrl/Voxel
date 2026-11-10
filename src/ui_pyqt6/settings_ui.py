@@ -49,6 +49,17 @@ _WARNING = "#f59e0b"
 _MODE_SUBTITLE = "How your speech is cleaned up"
 _MODE_SUBTITLE_OFFLINE = "Not used in Offline mode — transcription only"
 
+
+def _is_modifier_only_hotkey(hotkey: str) -> bool:
+    """True when the combo is modifiers alone, with no ordinary trigger key."""
+    from src.hotkey_listener import HotkeyListener
+    try:
+        return HotkeyListener(
+            hotkey_str=hotkey, on_press=lambda: None, on_release=lambda: None
+        ).is_modifier_only
+    except Exception:
+        return False
+
 # ---------------------------------------------------------------------------
 # QSS stylesheet
 # ---------------------------------------------------------------------------
@@ -526,6 +537,32 @@ class SettingsWindow(QWidget):
 
         root_layout.addLayout(hotkey_row)
 
+        root_layout.addSpacing(4)
+
+        # ── Activation mode ──────────────────────────────────────────────
+        activation_sub = QLabel("Activation")
+        activation_sub.setObjectName("section_sub")
+        root_layout.addWidget(activation_sub)
+        root_layout.addSpacing(2)
+
+        self._activation_combo = _ArrowComboBox()
+        self._activation_combo.setFixedHeight(36)
+        for label, value in (
+            ("Hold to talk", "hold"),
+            ("Press to start, press to stop", "toggle"),
+        ):
+            self._activation_combo.addItem(label, userData=value)
+        current_activation = self._config.get("activation_mode", "hold")
+        for i in range(self._activation_combo.count()):
+            if self._activation_combo.itemData(i) == current_activation:
+                self._activation_combo.setCurrentIndex(i)
+                break
+        self._activation_combo.setToolTip(
+            "Hold to talk: record while the hotkey is held.\n"
+            "Press to start, press to stop: tap once to begin, tap again to finish."
+        )
+        root_layout.addWidget(self._activation_combo)
+
         root_layout.addSpacing(8)
 
         # ── Dictation Mode ───────────────────────────────────────────────
@@ -900,7 +937,21 @@ class SettingsWindow(QWidget):
 
         self._config.set("api_key", self._api_key_edit.text().strip())
         self._config.set("language", self._lang_combo.currentData())
-        self._config.set("hotkey", self._hotkey_edit.text().strip())
+        hotkey = self._hotkey_edit.text().strip()
+        self._config.set("hotkey", hotkey)
+
+        # A modifier-only hotkey can't toggle: every Ctrl+Shift press would flip
+        # recording on or off. Refuse the combination rather than ship the trap.
+        activation = self._activation_combo.currentData() or "hold"
+        if activation == "toggle" and _is_modifier_only_hotkey(hotkey):
+            activation = "hold"
+            self._activation_combo.setCurrentIndex(0)
+            self._set_status(
+                "⚠ A modifier-only hotkey can't toggle — kept Hold to talk. "
+                "Add a normal key (e.g. Ctrl+Shift+Space) to use toggle.",
+                _WARNING,
+            )
+        self._config.set("activation_mode", activation)
         # Name is authoritative; the index is only a hint, since PyAudio
         # renumbers devices whenever audio hardware changes.
         self._config.set("mic_device_name", self._mic_combo.currentText() or None)

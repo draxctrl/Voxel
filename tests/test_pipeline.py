@@ -97,3 +97,52 @@ class TestUndoHotkeyRemoved:
         from src.main import VoxelApp
         assert not hasattr(VoxelApp, "_on_undo_press")
         assert not hasattr(VoxelApp, "_start_undo_listener")
+
+
+class TestToggleActivationState:
+    """Toggle state is derived from the recorder, never mirrored in a flag."""
+
+    class _FakeRecorder:
+        def __init__(self):
+            self.is_recording = False
+            self.starts = 0
+            self.stops = 0
+
+        def start(self):
+            self.is_recording = True
+            self.starts += 1
+
+        def stop(self):
+            self.is_recording = False
+            self.stops += 1
+
+    def _toggle(self, app):
+        """Mirror of VoxelApp._on_hotkey_trigger against a fake recorder."""
+        if app.is_recording:
+            app.stop()
+        else:
+            app.start()
+
+    def test_press_starts_then_press_stops(self):
+        rec = self._FakeRecorder()
+        self._toggle(rec)
+        assert rec.is_recording is True
+        self._toggle(rec)
+        assert rec.is_recording is False
+        assert (rec.starts, rec.stops) == (1, 1)
+
+    def test_press_after_max_duration_autostop_starts_again(self):
+        rec = self._FakeRecorder()
+        self._toggle(rec)            # user starts
+        rec.stop()                   # MAX_RECORDING_DURATION fires behind our back
+        assert rec.is_recording is False
+
+        self._toggle(rec)            # next press must START, not be eaten as a stop
+        assert rec.is_recording is True
+        assert rec.starts == 2
+
+
+class TestActivationModeConfig:
+    def test_defaults_to_hold(self):
+        from src.config import DEFAULT_CONFIG
+        assert DEFAULT_CONFIG["activation_mode"] == "hold"

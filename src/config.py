@@ -22,6 +22,8 @@ DEFAULT_CONFIG = {
     # different mic. mic_device is kept only as a fallback hint for old configs.
     "mic_device_name": None,
     "mic_device": None,
+    # "hold" = press and hold to record; "toggle" = press to start, press to stop.
+    "activation_mode": "hold",
     "offline_mode": False,
     "offline_model": "base",
     "raw_mode": False,

@@ -163,12 +163,28 @@ class VoxelApp:
             self._hotkey_listener.stop()
 
         hotkey = self._config.get("hotkey", "<ctrl>+<shift>+space")
+        activation_mode = self._config.get("activation_mode", "hold")
         self._hotkey_listener = HotkeyListener(
             hotkey_str=hotkey,
-            on_press=self._on_hotkey_press,
+            on_press=self._on_hotkey_trigger if activation_mode == "toggle"
+            else self._on_hotkey_press,
             on_release=self._on_hotkey_release,
+            activation_mode=activation_mode,
         )
         self._hotkey_listener.start()
+
+    def _on_hotkey_trigger(self) -> None:
+        """Toggle activation: press to start, press again to stop.
+
+        The state is read from the recorder rather than a flag of our own, so
+        the MAX_RECORDING_DURATION auto-stop — which stops the recorder without
+        the listener's knowledge — can never leave the next press reading as a
+        'stop' when nothing is recording.
+        """
+        if self._recorder.is_recording:
+            self._on_hotkey_release()
+        else:
+            self._on_hotkey_press()
 
     def _on_hotkey_press(self) -> None:
         if self._recorder.is_recording:

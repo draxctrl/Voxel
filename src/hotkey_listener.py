@@ -66,10 +66,15 @@ class HotkeyListener:
         on_press: Callable,
         on_release: Callable,
         min_hold_duration: float = 0.3,
+        activation_mode: str = "hold",
     ):
         self._on_press_cb = on_press
         self._on_release_cb = on_release
         self._min_hold_duration = min_hold_duration
+        #: "hold" = press and hold to record; "toggle" = press to start, press
+        #: again to stop. In toggle mode the release is meaningless, so the tap
+        #: filter and the release-polling fallback are both skipped.
+        self.activation_mode = activation_mode
 
         self._modifier_keys, self._trigger_key = _parse_hotkey(hotkey_str)
         self._modifier_only = self._trigger_key is None
@@ -143,7 +148,26 @@ class HotkeyListener:
                 return False
         return True
 
+    @property
+    def is_modifier_only(self) -> bool:
+        """True when the hotkey is modifiers alone, with no trigger key.
+
+        Such a combo cannot be used with toggle activation: every Ctrl+Shift
+        press would flip recording on or off.
+        """
+        return self._modifier_only
+
     def _handle_press(self) -> None:
+        if self._toggle_mode:
+            # Holding a key repeats its press event; _is_held makes this fire
+            # once per real press rather than many times per hold.
+            if self._is_held:
+                return
+            self._is_held = True
+            logger.info("Hotkey pressed (toggle)")
+            self._on_press_cb()
+            return
+
         if self._is_held:
             return
         self._is_held = True
@@ -153,7 +177,17 @@ class HotkeyListener:
         # Start polling as a safety net for missed release events
         self._start_release_poll()
 
+    @property
+    def _toggle_mode(self) -> bool:
+        return self.activation_mode == "toggle"
+
     def _handle_release(self) -> None:
+        # In toggle mode the release carries no meaning beyond re-arming the
+        # next press; the recording is stopped by pressing again.
+        if self._toggle_mode:
+            self._is_held = False
+            return
+
         if not self._is_held:
             return
         self._is_held = False

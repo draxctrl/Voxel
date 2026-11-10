@@ -57,3 +57,22 @@ class TestUndoRowRemoved:
     def test_no_undo_widgets_remain(self, window):
         assert not hasattr(window, "_undo_hotkey_edit")
         assert not hasattr(window, "_undo_capture_btn")
+
+
+class TestActivationMode:
+    def test_defaults_to_hold(self, window):
+        assert window._activation_combo.currentData() == "hold"
+
+    def test_saving_toggle_with_normal_hotkey_is_kept(self, window):
+        window._hotkey_edit.setText("<ctrl>+<shift>+space")
+        window._activation_combo.setCurrentIndex(1)
+        window._save()
+        assert window._config.get("activation_mode") == "toggle"
+
+    def test_toggle_is_refused_for_modifier_only_hotkey(self, window):
+        # Every Ctrl+Alt press would flip recording, so this must be refused.
+        window._hotkey_edit.setText("<ctrl>+<alt>")
+        window._activation_combo.setCurrentIndex(1)
+        window._save()
+        assert window._config.get("activation_mode") == "hold"
+        assert window._activation_combo.currentData() == "hold"
