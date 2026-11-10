@@ -8,3 +8,4 @@ build/
 *.egg-info/
 BudgetWhisper-mac/.venv/
 *.zip
+.superpowers/
