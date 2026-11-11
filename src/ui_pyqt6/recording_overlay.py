@@ -18,7 +18,6 @@ from __future__ import annotations
 import logging
 from typing import Callable
 
-import pyaudio
 from PyQt6.QtCore import (
     QObject,
     QPoint,
@@ -53,21 +52,6 @@ def _truncate_mic_name(text: str) -> str:
     if len(text) > MAX_MIC_CHARS:
         return text[:MAX_MIC_CHARS - 1] + "…"
     return text
-
-
-def _get_mic_name() -> str:
-    try:
-        pa = pyaudio.PyAudio()
-        idx = pa.get_default_input_device_info().get("index", None)
-        if idx is not None:
-            info = pa.get_device_info_by_index(idx)
-            name = str(info.get("name", "Microphone"))
-        else:
-            name = "Microphone"
-        pa.terminate()
-        return name
-    except Exception:
-        return "Microphone"
 
 
 class _OverlaySignals(QObject):
@@ -114,7 +98,9 @@ class RecordingOverlay(QWidget):
         self._state = "recording"
         self._elapsed_text = "0:00"
 
-        self._mic_name = _truncate_mic_name(_get_mic_name())
+        # Empty unless something has a warning to show: the badge does not
+        # name a microphone that is working.
+        self._mic_name = ""
 
         # --- cross-thread signals -------------------------------------------
         self._signals = _OverlaySignals()

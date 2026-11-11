@@ -16,12 +16,17 @@ _VK_CODES = {
 }
 
 
+def _vk_pressed(vk: int) -> bool:
+    """Is this virtual key physically down right now?"""
+    return bool(ctypes.windll.user32.GetAsyncKeyState(vk) & 0x8000)
+
+
 def _is_key_physically_pressed(vk_name: str) -> bool:
-    """Check if a key is currently pressed using Win32 GetAsyncKeyState."""
+    """Check if a named modifier is currently pressed."""
     vk = _VK_CODES.get(vk_name)
     if vk is None:
         return False
-    return bool(ctypes.windll.user32.GetAsyncKeyState(vk) & 0x8000)
+    return _vk_pressed(vk)
 
 _MODIFIER_MAP = {
     "<ctrl>": ("ctrl_l", "ctrl_r"),
@@ -67,9 +72,15 @@ class HotkeyListener:
         on_release: Callable,
         min_hold_duration: float = 0.3,
         activation_mode: str = "hold",
+        on_cancel: Callable | None = None,
     ):
         self._on_press_cb = on_press
         self._on_release_cb = on_release
+        #: Called instead of on_release when a press was too short to count.
+        #: on_press has already started recording by then, so something has to
+        #: end it — without this the recording ran until the max-duration
+        #: timer and looked to the user like the hotkey had stuck.
+        self._on_cancel_cb = on_cancel
         self._min_hold_duration = min_hold_duration
         #: "hold" = press and hold to record; "toggle" = press to start, press
         #: again to stop. In toggle mode the release is meaningless, so the tap
@@ -198,8 +209,10 @@ class HotkeyListener:
 
         hold_duration = time.time() - self._press_time
         if hold_duration < self._min_hold_duration:
-            logger.debug("Tap ignored (%.0fms < %dms)",
-                         hold_duration * 1000, self._min_hold_duration * 1000)
+            logger.info("Tap cancelled (%.0fms < %dms)",
+                        hold_duration * 1000, self._min_hold_duration * 1000)
+            if self._on_cancel_cb is not None:
+                self._on_cancel_cb()
             return
 
         logger.info("Hotkey released after %.0fms", hold_duration * 1000)
@@ -253,15 +266,36 @@ class HotkeyListener:
                 return False
         return True
 
+    def _trigger_vk(self) -> int | None:
+        """The trigger key's Windows virtual key code, or None.
+
+        pynput's named keys (Key.space, Key.f1 …) carry their code on
+        ``.value.vk``, not on the member itself. Reading only ``.vk`` left
+        every named trigger unpollable, so the release poll fell through to
+        "assume still held" and could never catch a missed key-up.
+        """
+        key = self._trigger_key
+        if key is None:
+            return None
+        name = getattr(key, "name", None)
+        if name in _VK_CODES:
+            return _VK_CODES[name]
+        vk = getattr(key, "vk", None)
+        if vk:
+            return int(vk)
+        vk = getattr(getattr(key, "value", None), "vk", None)
+        if vk:
+            return int(vk)
+        return None
+
     def _trigger_still_held(self) -> bool:
-        """Check if the trigger key is still held (for non-modifier hotkeys)."""
-        if self._trigger_key is None:
+        """Is the trigger key still physically down?
+
+        True for a modifier-only hotkey, which has no trigger key, and true
+        for a key whose code cannot be resolved — in that case the modifier
+        check is the only safety net there is.
+        """
+        vk = self._trigger_vk()
+        if vk is None:
             return True
-        if hasattr(self._trigger_key, 'name'):
-            vk_name = self._trigger_key.name
-            if vk_name in _VK_CODES:
-                return _is_key_physically_pressed(vk_name)
-        # For regular keys, check via GetAsyncKeyState with vk_code
-        if hasattr(self._trigger_key, 'vk') and self._trigger_key.vk:
-            return bool(ctypes.windll.user32.GetAsyncKeyState(self._trigger_key.vk) & 0x8000)
-        return True  # Can't check, assume still held
+        return _vk_pressed(vk)

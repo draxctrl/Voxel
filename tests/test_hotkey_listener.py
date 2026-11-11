@@ -198,3 +198,89 @@ class TestActivationModes:
             listener._rearm_toggle()
 
         assert listener._is_held is True
+
+
+class TestATapCannotLeaveRecordingRunning:
+    """The press callback starts recording immediately. A tap shorter than
+    the hold threshold used to return without calling anything back, so the
+    recording it had already started ran on until the max-duration timer."""
+
+    def _listener(self):
+        self.on_press = MagicMock()
+        self.on_release = MagicMock()
+        self.on_cancel = MagicMock()
+        return HotkeyListener(
+            hotkey_str="<ctrl>+<shift>+space",
+            on_press=self.on_press,
+            on_release=self.on_release,
+            on_cancel=self.on_cancel,
+            min_hold_duration=0.3,
+        )
+
+    def test_a_tap_cancels_what_the_press_started(self):
+        listener = self._listener()
+        listener._handle_press()
+        listener._press_time = time.time() - 0.1
+        listener._handle_release()
+
+        self.on_press.assert_called_once()
+        self.on_release.assert_not_called()
+        self.on_cancel.assert_called_once()
+
+    def test_a_real_hold_still_transcribes(self):
+        listener = self._listener()
+        listener._handle_press()
+        listener._press_time = time.time() - 1.0
+        listener._handle_release()
+
+        self.on_release.assert_called_once()
+        self.on_cancel.assert_not_called()
+
+    def test_a_missing_cancel_callback_is_not_fatal(self):
+        """on_cancel is optional, so older call sites keep working."""
+        listener = HotkeyListener(
+            hotkey_str="<ctrl>+<shift>+space",
+            on_press=MagicMock(),
+            on_release=MagicMock(),
+            min_hold_duration=0.3,
+        )
+        listener._handle_press()
+        listener._press_time = time.time() - 0.1
+        listener._handle_release()   # must not raise
+
+
+class TestTheReleasePollCanSeeTheTriggerKey:
+    """The poll is the safety net for a key-up pynput misses. It could not
+    see <space> at all — pynput's Key.space has no .vk, only .value.vk — so
+    it fell through to 'assume still held' and the net never caught anything
+    unless a modifier was released too."""
+
+    def _listener(self):
+        return HotkeyListener(
+            hotkey_str="<ctrl>+<shift>+space",
+            on_press=MagicMock(),
+            on_release=MagicMock(),
+        )
+
+    def test_the_trigger_key_resolves_to_a_virtual_key_code(self):
+        assert self._listener()._trigger_vk() == 32   # VK_SPACE
+
+    def test_a_released_trigger_is_reported_as_released(self):
+        listener = self._listener()
+        with patch("src.hotkey_listener._vk_pressed", return_value=False) as pressed:
+            assert listener._trigger_still_held() is False
+        pressed.assert_called_with(32)
+
+    def test_a_held_trigger_is_reported_as_held(self):
+        listener = self._listener()
+        with patch("src.hotkey_listener._vk_pressed", return_value=True):
+            assert listener._trigger_still_held() is True
+
+    def test_a_modifier_only_hotkey_has_no_trigger_to_poll(self):
+        listener = HotkeyListener(
+            hotkey_str="<ctrl>+<shift>",
+            on_press=MagicMock(),
+            on_release=MagicMock(),
+        )
+        assert listener._trigger_vk() is None
+        assert listener._trigger_still_held() is True

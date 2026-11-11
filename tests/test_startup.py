@@ -74,11 +74,23 @@ class TestStartupChain:
 
         assert app._config.get("api_key") == ""
 
-    def test_report_mic_fallback_names_the_active_device(self, app):
+    def test_a_working_microphone_is_not_announced_on_the_badge(self, app):
+        """The badge is what you look at while you talk. Naming the device
+        there every time is noise; it only earns its place as a warning."""
         app._report_mic_fallback()
 
-        app._overlay.set_mic_text.assert_called()
-        assert "Realtek Mic" in app._overlay.set_mic_text.call_args[0][0]
+        shown = [c[0][0] for c in app._overlay.set_mic_text.call_args_list]
+        assert all("Realtek Mic" not in text for text in shown), (
+            f"the badge was told to show the device name: {shown}"
+        )
+
+    def test_a_working_microphone_is_still_backfilled(self, app):
+        """Dropping the badge line must not drop the backfill, which is what
+        stops a renumbered device silently moving the user to another mic."""
+        from unittest.mock import patch
+        with patch.object(app._config, "backfill_mic_name") as backfill:
+            app._report_mic_fallback()
+        backfill.assert_called_once_with("Realtek Mic")
 
     def test_report_mic_fallback_warns_when_device_missing(self, app):
         app._recorder.requested_device_missing = True
@@ -143,3 +155,47 @@ class TestOverlayIsWiredToTheLiveRecorder:
     def test_the_level_provider_survives_a_recorder_that_has_gone_away(self, app):
         app._recorder = None
         assert app._overlay_level() == 0.0
+
+
+class TestThePressToTalkKeyCanAlsoCancel:
+    """A press that starts a recording must always be able to end it — by a
+    second press, or by the tap filter — or the badge sits there listening
+    until the max-duration timer fires."""
+
+    def test_cancelling_stops_the_recorder_without_transcribing(self, app):
+        app._recorder.is_recording = True
+        app._cancel_recording()
+
+        app._recorder.stop.assert_called_once()
+        app._overlay.hide.assert_called()
+        app._tray.set_state.assert_called_with("idle")
+
+    def test_cancelling_when_nothing_is_recording_does_nothing(self, app):
+        app._recorder.is_recording = False
+        app._cancel_recording()
+        app._recorder.stop.assert_not_called()
+
+    def test_pressing_again_while_recording_cancels_it(self, app):
+        """The recording is already running, so this press cannot be a start.
+        It is the user asking to get out of a recording that did not stop."""
+        app._recorder.is_recording = True
+        app._on_hotkey_press()
+
+        app._recorder.stop.assert_called_once()
+        app._recorder.start.assert_not_called()
+
+    def test_cancelling_stops_the_max_duration_timer(self, app):
+        from unittest.mock import MagicMock
+        timer = MagicMock()
+        app._max_record_timer = timer
+        app._recorder.is_recording = True
+        app._cancel_recording()
+
+        timer.cancel.assert_called_once()
+        assert app._max_record_timer is None
+
+    def test_the_listener_is_given_a_cancel_callback(self, app):
+        from unittest.mock import patch
+        with patch("src.main.HotkeyListener") as listener_cls:
+            app._start_hotkey_listener()
+        assert listener_cls.call_args.kwargs["on_cancel"] == app._cancel_recording

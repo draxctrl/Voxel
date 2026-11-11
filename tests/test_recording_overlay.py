@@ -269,3 +269,16 @@ class TestSwappingStyleKeepsTheState:
         first = overlay._display
         overlay.set_style("spinning-pizza")
         assert overlay._display is first
+
+
+class TestTheBadgeDoesNotNameTheDevice:
+    """Nothing asked for the microphone's name under the timer."""
+
+    def test_no_device_line_until_something_sets_one(self, overlay):
+        assert overlay._display.mic_text == ""
+
+    def test_a_warning_still_survives_a_hide(self, overlay):
+        overlay._on_set_mic_text("⚠ Blue Yeti not found — using Realtek Mic")
+        overlay._on_hide()
+        overlay._on_show_recording()
+        assert "not found" in overlay._display.mic_text

@@ -186,6 +186,7 @@ class VoxelApp:
             on_press=self._on_hotkey_trigger if activation_mode == "toggle"
             else self._on_hotkey_press,
             on_release=self._on_hotkey_release,
+            on_cancel=self._cancel_recording,
             activation_mode=activation_mode,
         )
         self._hotkey_listener.start()
@@ -205,6 +206,11 @@ class VoxelApp:
 
     def _on_hotkey_press(self) -> None:
         if self._recorder.is_recording:
+            # A recording is already running, so this press cannot be a start.
+            # It is the user pressing the key again to get out of a recording
+            # that did not stop when they let go.
+            logger.info("Hotkey pressed while recording — cancelling")
+            self._cancel_recording()
             return
 
         # Capture target window/app BEFORE showing overlay (otherwise overlay = foreground)
@@ -220,6 +226,28 @@ class VoxelApp:
         self._max_record_timer = threading.Timer(MAX_RECORDING_DURATION, self._on_hotkey_release)
         self._max_record_timer.daemon = True
         self._max_record_timer.start()
+
+    def _cancel_recording(self) -> None:
+        """End a recording and throw the audio away.
+
+        Used when a press was too short to mean anything, and when the user
+        presses the key again to get out of a recording that is still running.
+        Deliberately silent: there is nothing to confirm.
+        """
+        if self._max_record_timer:
+            self._max_record_timer.cancel()
+            self._max_record_timer = None
+
+        if not self._recorder.is_recording:
+            return
+
+        try:
+            self._recorder.stop()
+        except Exception as e:
+            logger.debug("Could not stop the recorder on cancel: %s", e)
+        self._tray.set_state("idle")
+        self._overlay.hide()
+        logger.info("Recording cancelled")
 
     def _on_hotkey_release(self) -> None:
         if self._max_record_timer:
@@ -369,11 +397,12 @@ class VoxelApp:
             return 0.0
 
     def _report_mic_fallback(self) -> None:
-        """Say which microphone is actually in use, and warn if it isn't the chosen one.
+        """Warn when the chosen microphone is missing and another is in use.
 
-        Falling back silently is what made a renumbered device look like a broken
-        app, so the fallback is always visible: on the recording overlay, where
-        the user is looking while they talk, and in Settings.
+        Falling back silently is what made a renumbered device look like a
+        broken app, so a fallback is always visible: on the recording badge,
+        where the user is looking while they talk, and in Settings. A
+        microphone that is working is not announced anywhere.
         """
         active = getattr(self._recorder, "active_device_name", None)
         missing = getattr(self._recorder, "requested_device_missing", False)
@@ -386,26 +415,31 @@ class VoxelApp:
             except Exception as e:
                 logger.debug("Could not backfill mic name: %s", e)
 
-        if missing:
-            wanted = self._config.get("mic_device_name") or "Saved microphone"
-            using = active or "default microphone"
-            logger.warning("Microphone %r not found; using %r", wanted, using)
-            message = f"⚠ {wanted} not found — using {using}"
-        elif active:
-            message = active
-        else:
+        if not missing:
+            # The badge is what the user looks at while they talk; naming a
+            # working microphone there every time is noise. Clear it, in case
+            # an earlier warning is still standing from a device that has
+            # since come back.
+            try:
+                self._overlay.set_mic_text("")
+            except Exception as e:
+                logger.debug("Could not clear overlay mic text: %s", e)
             return
+
+        wanted = self._config.get("mic_device_name") or "Saved microphone"
+        using = active or "default microphone"
+        logger.warning("Microphone %r not found; using %r", wanted, using)
+        message = f"⚠ {wanted} not found — using {using}"
 
         try:
             self._overlay.set_mic_text(message)
         except Exception as e:
             logger.debug("Could not set overlay mic text: %s", e)
 
-        if missing:
-            try:
-                self._settings_window.show_warning(message)
-            except Exception as e:
-                logger.debug("Could not show mic warning in settings: %s", e)
+        try:
+            self._settings_window.show_warning(message)
+        except Exception as e:
+            logger.debug("Could not show mic warning in settings: %s", e)
 
     def _resolve_profile(self, app_name: str | None) -> tuple[str, dict]:
         """Which dictation mode this utterance runs under."""
