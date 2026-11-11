@@ -19,6 +19,15 @@ CHUNK_SIZE = 512  # ~32ms @ 16kHz - small for low latency
 # (compensates for human reaction time + stream startup latency)
 PREROLL_SECONDS = 0.6
 
+#: RMS treated as "as loud as the display goes". Ordinary speech into a
+#: desktop microphone lands around 1500-4000 on a 16-bit scale; using full
+#: scale (32768) would leave the display flat for everything but a shout.
+LEVEL_FULL_SCALE_RMS = 4000.0
+#: How much of the previous level survives a quiet chunk. Attack is instant so
+#: speech registers at once; decay is gentle so the display does not flicker
+#: between syllables.
+LEVEL_DECAY = 0.82
+
 
 def find_preferred_host_api(pa) -> int | None:
     """Index of the WASAPI host API, or None.
@@ -94,6 +103,10 @@ class MicRecorder:
         self._active_device_name: str | None = None
         self._requested_device_missing: bool = False
         self._actual_rate: int = TARGET_SAMPLE_RATE
+        #: Rolling loudness, 0..1, updated once per captured chunk. The UI
+        #: reads it 60 times a second, so it must never depend on how long the
+        #: recording has been running.
+        self._level: float = 0.0
         self._lock = threading.Lock()
         # Try to start stream, but don't crash app if it fails
         try:
@@ -229,6 +242,7 @@ class MicRecorder:
                 data = self._stream.read(CHUNK_SIZE, exception_on_overflow=False)
                 if not isinstance(data, bytes):
                     data = bytes(data)
+                self._note_level(data)
                 with self._lock:
                     if self._recording:
                         self._active_frames.append(data)
@@ -259,6 +273,9 @@ class MicRecorder:
             # Seed active frames with the preroll buffer so no words are lost
             self._active_frames = list(self._preroll)
             self._recording = True
+            # Otherwise the display opens showing the loudness of whatever was
+            # happening in the room before the hotkey was pressed.
+            self._level = 0.0
         logger.info("Recording started (with %d preroll chunks)", len(self._active_frames))
 
     def stop(self) -> Optional[bytes]:
@@ -300,6 +317,27 @@ class MicRecorder:
             except Exception:
                 pass
             self._pa = None
+
+    def _note_level(self, chunk: bytes) -> None:
+        """Fold one freshly captured chunk into the rolling level.
+
+        Only this chunk is measured, so the cost is fixed however long the
+        recording runs - unlike get_rms(), which re-sums the whole buffer.
+        """
+        count = len(chunk) // 2
+        if count == 0:
+            return
+        samples = struct.unpack(f"<{count}h", chunk)
+        rms = (sum(s * s for s in samples) / count) ** 0.5
+        new = min(1.0, rms / LEVEL_FULL_SCALE_RMS)
+        with self._lock:
+            # Fast attack, slow decay.
+            self._level = max(new, self._level * LEVEL_DECAY)
+
+    def current_level(self) -> float:
+        """Loudness right now, 0.0 to 1.0. Cheap enough to poll at 60fps."""
+        with self._lock:
+            return self._level
 
     def get_rms(self) -> float:
         """Calculate RMS volume of recorded audio. Returns 0.0 if no frames."""

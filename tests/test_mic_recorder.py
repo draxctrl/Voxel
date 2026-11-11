@@ -216,3 +216,88 @@ class TestHostApiScoping:
     def test_without_preference_lowest_index_still_wins(self):
         pa = _FakePA([("Blue Yeti", 1, 0), ("Blue Yeti", 1, 2)])
         assert find_input_device_by_name(pa, "Blue Yeti") == 0
+
+
+class TestCurrentLevel:
+    """The recording animation is driven by this, 60 times a second."""
+
+    def _recorder(self):
+        """A MicRecorder with no stream — the level path needs no hardware."""
+        from unittest.mock import patch
+        from src.mic_recorder import MicRecorder
+        with patch.object(MicRecorder, "_start_stream", lambda self: None):
+            return MicRecorder()
+
+    def _chunk(self, amplitude: int, samples: int = 512) -> bytes:
+        import struct
+        return struct.pack(f"<{samples}h", *([amplitude, -amplitude] * (samples // 2)))
+
+    def test_silence_reads_zero(self):
+        assert self._recorder().current_level() == 0.0
+
+    def test_a_loud_chunk_reads_high(self):
+        from src.mic_recorder import LEVEL_FULL_SCALE_RMS
+        rec = self._recorder()
+        rec._note_level(self._chunk(int(LEVEL_FULL_SCALE_RMS)))
+        assert rec.current_level() > 0.8
+
+    def test_a_quiet_chunk_reads_low(self):
+        rec = self._recorder()
+        rec._note_level(self._chunk(40))
+        assert rec.current_level() < 0.1
+
+    def test_the_level_is_clamped_to_one(self):
+        rec = self._recorder()
+        rec._note_level(self._chunk(32000))
+        assert rec.current_level() <= 1.0
+
+    def test_it_measures_only_the_newest_chunk(self):
+        """get_rms() sums every buffered frame, so it gets slower the longer
+        you talk. The display reads the level 60 times a second and must not
+        grow more expensive as the recording runs."""
+        import time
+        rec = self._recorder()
+        chunk = self._chunk(2000)
+
+        rec.start()
+        for _ in range(20):
+            rec._note_level(chunk)
+            rec._active_frames.append(chunk)
+        t0 = time.perf_counter()
+        for _ in range(200):
+            rec.current_level()
+        short = time.perf_counter() - t0
+
+        for _ in range(4000):
+            rec._active_frames.append(chunk)
+        t0 = time.perf_counter()
+        for _ in range(200):
+            rec.current_level()
+        long = time.perf_counter() - t0
+
+        assert long < short * 5 + 0.01, (
+            f"reading the level got {long / max(short, 1e-9):.1f}x slower "
+            "as the recording grew"
+        )
+
+    def test_level_decays_rather_than_snapping_to_zero(self):
+        """A display that snaps to zero between syllables flickers."""
+        rec = self._recorder()
+        rec._note_level(self._chunk(8000))
+        loud = rec.current_level()
+        rec._note_level(self._chunk(0))
+        after = rec.current_level()
+        assert 0 < after < loud
+
+    def test_a_loud_chunk_takes_effect_immediately(self):
+        """Fast attack: speech must not fade in over several frames."""
+        rec = self._recorder()
+        rec._note_level(self._chunk(0))
+        rec._note_level(self._chunk(6000))
+        assert rec.current_level() > 0.5
+
+    def test_starting_a_recording_clears_the_previous_level(self):
+        rec = self._recorder()
+        rec._note_level(self._chunk(8000))
+        rec.start()
+        assert rec.current_level() == 0.0
