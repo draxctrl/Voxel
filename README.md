@@ -17,7 +17,7 @@
 
 **Free & open-source voice dictation for Windows & macOS**
 <br>
-Powered by Groq Whisper + Llama 3. No subscriptions, no cost.
+Powered by Groq Whisper + GPT-OSS. No subscriptions, no cost.
 
 <br>
 
@@ -163,6 +163,33 @@ Default hotkey on Mac: `Cmd+Shift+Space`
 
 ---
 
+## 🎨 Coming in the next release
+
+Voxel is being redesigned. **These are mockups of the new interface, not the
+app as it ships today** — the current version still looks like the settings
+window described below.
+
+<div align="center">
+<img src="docs/mockups/settings-writing-style.png" alt="The new settings window: a sidebar on the left, one topic at a time on the right" width="760" />
+<br><br>
+<img src="docs/mockups/settings-history.png" alt="History, now a section inside the main window instead of a separate one" width="760" />
+</div>
+
+What changes:
+
+- **A sidebar instead of one long page.** One topic on screen at a time, nothing to scroll past.
+- **History and Statistics move inside the main window** and stop being separate windows.
+- **Plain-language labels** — "Writing style" rather than "Dictation Mode".
+- **Light and dark themes**, following your Windows setting.
+- **A first run that sets you up in about a minute** and ends with you having already dictated something.
+
+<div align="center">
+<img src="docs/mockups/first-run-2-setup.png" alt="First run: choosing between the free Groq key and fully offline transcription" width="520" />
+<img src="docs/mockups/first-run-4-try-it.png" alt="First run: trying a dictation inside Voxel before you finish setup" width="520" />
+</div>
+
+---
+
 ## ⚙️ Settings
 
 Right-click the tray icon to access Settings, History, or Statistics. Inside Settings:
@@ -189,7 +216,7 @@ Right-click the tray icon to access Settings, History, or Statistics. Inside Set
 | Component | Technology |
 |-----------|-----------|
 | Language | Python 3.13+ |
-| AI Backend | Groq API (free) - Whisper Large v3 + Llama 3.3 70B |
+| AI Backend | Groq API (free) - Whisper Large v3 + GPT-OSS 120B |
 | Offline Transcription | faster-whisper (CTranslate2) |
 | UI Framework | PyQt6 |
 | Hotkey Listener | pynput |
