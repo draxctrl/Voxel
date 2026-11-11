@@ -32,7 +32,15 @@ DEFAULT_CONFIG = {
     "recording_style": "orb",
     "offline_mode": False,
     "offline_model": "base",
-    "raw_mode": False,
+    # Read with inline defaults long before they were declared here, which
+    # left the settings window writing keys DEFAULT_CONFIG did not know
+    # about. The values are what Voxel already did, not a new choice.
+    "always_copy": False,
+    "clipboard_notice": True,
+    # "system" follows the Windows light/dark setting; "light"/"dark" pin it.
+    "theme": "system",
+    # Empty means no undo shortcut is set.
+    "undo_hotkey": "",
 }
 
 

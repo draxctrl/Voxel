@@ -79,14 +79,14 @@ class PlaceholderPane(Pane):
 _REGISTRY: dict[str, str | None] = {
     "writing_style": "writing_style:WritingStylePane",
     "voice_commands": None,
-    "language": None,
+    "language": "language:LanguagePane",
     "microphone": "microphone:MicrophonePane",
     "shortcuts": "shortcuts:ShortcutsPane",
     "appearance": "appearance:AppearancePane",
     "history": None,
     "stats": None,
-    "general": None,
-    "about": None,
+    "general": "general:GeneralPane",
+    "about": "about:AboutPane",
 }
 
 #: Titles for the placeholders, so a half-built window still reads.

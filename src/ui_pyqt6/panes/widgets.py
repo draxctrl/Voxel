@@ -23,6 +23,18 @@ from ..theme import IOSSwitch
 CONTENT_MAX_WIDTH = 720
 
 
+def link_markup(text: str, url: str, colour: str) -> str:
+    """Anchor markup that carries its own colour.
+
+    A QLabel's anchors ignore the widget's `color` rule and render in Qt's
+    default blue with an underline, so the colour goes in the tag.
+    """
+    return (
+        '<a href="%s" style="color: %s; text-decoration: none;">%s</a>'
+        % (url, colour, text)
+    )
+
+
 class PaneHeader(QWidget):
     """The title and one line of explanation at the top of a pane."""
 
