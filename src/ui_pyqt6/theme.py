@@ -378,6 +378,26 @@ QLabel#row_sub {{
     background: transparent;
 }}
 
+QWidget#style_picker {{
+    background: transparent;
+}}
+
+QFrame#style_tile {{
+    background-color: {p['card_alt']};
+    border: 2px solid transparent;
+    border-radius: 10px;
+}}
+
+QFrame#style_tile[selected="true"] {{
+    border: 2px solid {p['accent']};
+}}
+
+QLabel#tile_label {{
+    color: {p['secondary']};
+    font-size: 10px;
+    background: transparent;
+}}
+
 QLabel#row_value {{
     color: {p['secondary']};
     font-size: 13px;

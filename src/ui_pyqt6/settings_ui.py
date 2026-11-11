@@ -44,8 +44,10 @@ from src.ui_pyqt6.ios_layout import (
     GroupCard,
     SettingsRow,
     StackedRow,
+    StylePicker,
     section_header,
 )
+from src.ui_pyqt6.recording_styles import DEFAULT_STYLE, RECORDING_STYLES
 
 logger = logging.getLogger(__name__)
 
@@ -331,6 +333,15 @@ class SettingsWindow(QWidget):
         self._mic_combo.setFixedSize(QSize(230, 34))
         self._populate_mics()
         card.add_row(SettingsRow("Microphone", control=self._mic_combo))
+
+        style_row = StackedRow(
+            "While you talk", subtitle="Tap one to choose how Voxel looks when listening"
+        )
+        self._style_picker = StylePicker(
+            RECORDING_STYLES, self._config.get("recording_style", DEFAULT_STYLE)
+        )
+        style_row.add_control(self._style_picker, stretch=1)
+        card.add_row(style_row)
 
         # -- BEHAVIOUR ----------------------------------------------------
         card = self._add_group("BEHAVIOUR")
@@ -746,6 +757,7 @@ class SettingsWindow(QWidget):
                 current_palette()["warning"],
             )
         self._config.set("activation_mode", activation)
+        self._config.set("recording_style", self._style_picker.selected())
         # Name is authoritative; the index is only a hint, since PyAudio
         # renumbers devices whenever audio hardware changes. The name comes from
         # _mic_names, not the display text, so "(not connected)" suffixes and

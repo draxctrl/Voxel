@@ -350,3 +350,62 @@ class TestHelpMatchesTheWindow:
         from src.ui_pyqt6 import settings_ui
         source = inspect.getsource(settings_ui.SettingsWindow._show_help)
         assert "Voice Commands button" not in source
+
+
+class TestRecordingStylePicker:
+    def test_it_offers_every_style(self, window):
+        from src.ui_pyqt6.recording_styles import RECORDING_STYLES
+        assert set(window._style_picker.style_ids()) == set(RECORDING_STYLES)
+
+    def test_it_starts_on_the_configured_style(self, qapp, tmp_path):
+        from src.ui_pyqt6.settings_ui import SettingsWindow
+        cfg = Config(config_path=str(tmp_path / "config.json"))
+        cfg.load()
+        cfg.set("recording_style", "island")
+        w = SettingsWindow(config=cfg, on_save=lambda: None)
+        assert w._style_picker.selected() == "island"
+        w.deleteLater()
+
+    def test_an_unknown_saved_style_falls_back_to_the_default(self, qapp, tmp_path):
+        from src.ui_pyqt6.settings_ui import SettingsWindow
+        from src.ui_pyqt6.recording_styles import DEFAULT_STYLE
+        cfg = Config(config_path=str(tmp_path / "config.json"))
+        cfg.load()
+        cfg.set("recording_style", "spinning-pizza")
+        w = SettingsWindow(config=cfg, on_save=lambda: None)
+        assert w._style_picker.selected() == DEFAULT_STYLE
+        w.deleteLater()
+
+    def test_choosing_one_saves_it(self, window):
+        window._style_picker.select("waveform")
+        window._save()
+        assert window._config.get("recording_style") == "waveform"
+
+    def test_the_picker_lives_in_the_recording_group(self, window):
+        assert _card_of(window._style_picker) is window._groups["RECORDING"]
+
+    def test_the_previews_animate_only_while_the_window_is_visible(self, qapp, window):
+        """A hidden window animating three displays at 60fps burns a core."""
+        window.show()
+        qapp.processEvents()
+        assert window._style_picker._timer.isActive()
+        window.hide()
+        qapp.processEvents()
+        assert not window._style_picker._timer.isActive()
+
+    def test_the_previews_do_not_touch_the_microphone(self, qapp, window):
+        """A preview that opened the mic would fight the recorder for it."""
+        from unittest.mock import patch
+        with patch("pyaudio.PyAudio", side_effect=AssertionError("preview opened the mic")):
+            window.show()
+            qapp.processEvents()
+            window._style_picker._tick()
+            window._style_picker._tick()
+
+    def test_previews_show_a_level_that_changes(self, qapp, window):
+        picker = window._style_picker
+        levels = set()
+        for _ in range(12):
+            picker._tick()
+            levels.add(round(picker._preview_for("orb").level, 3))
+        assert len(levels) > 1, "the previews are frozen"

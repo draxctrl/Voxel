@@ -11,6 +11,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QFontMetrics, QPainter, QPen
 from PyQt6.QtWidgets import (
     QFrame,
+    QStyle,
     QHBoxLayout,
     QLabel,
     QVBoxLayout,
@@ -238,4 +239,161 @@ class DisclosureRow(SettingsRow):
         y = self.height() // 2
         painter.drawLine(x - 2, y - 4, x + 2, y)
         painter.drawLine(x + 2, y, x - 2, y + 4)
+        painter.end()
+
+
+class StylePicker(QWidget):
+    """Pick a recording display from live animated thumbnails.
+
+    The thumbnails are the real display widgets, scaled down and fed a
+    synthetic level: the user sees exactly what they are choosing, and the
+    preview never opens the microphone — that would fight the recorder for the
+    device.
+    """
+
+    selection_changed = pyqtSignal(str)
+
+    THUMB_W = 136
+    THUMB_H = 86
+    #: How fast the synthetic level cycles, in radians per frame.
+    PREVIEW_SPEED = 0.12
+
+    def __init__(
+        self,
+        styles: dict[str, str],
+        selected: str,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.setObjectName("style_picker")
+
+        from PyQt6.QtCore import QTimer
+
+        self._styles = dict(styles)
+        self._selected = selected if selected in self._styles else next(iter(self._styles))
+        self._phase = 0.0
+        self._tiles: dict[str, _StyleTile] = {}
+
+        row = QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(10)
+        for style_id, label in self._styles.items():
+            tile = _StyleTile(style_id, label, self.THUMB_W, self.THUMB_H, self)
+            tile.clicked.connect(self.select)
+            row.addWidget(tile)
+            self._tiles[style_id] = tile
+
+        self._timer = QTimer(self)
+        self._timer.setInterval(40)
+        self._timer.timeout.connect(self._tick)
+
+        self.select(self._selected)
+
+    # -- selection ------------------------------------------------------
+    def style_ids(self) -> list[str]:
+        return list(self._styles)
+
+    def selected(self) -> str:
+        return self._selected
+
+    def select(self, style_id: str) -> None:
+        if style_id not in self._styles:
+            return
+        self._selected = style_id
+        for sid, tile in self._tiles.items():
+            tile.set_selected(sid == style_id)
+        self.selection_changed.emit(style_id)
+
+    def _preview_for(self, style_id: str):
+        return self._tiles[style_id].display
+
+    # -- animation ------------------------------------------------------
+    def _tick(self) -> None:
+        import math
+
+        self._phase += self.PREVIEW_SPEED
+        # A synthetic level: speech-like, and nothing to do with the mic.
+        level = 0.5 + 0.45 * math.sin(self._phase) * math.sin(self._phase * 0.37)
+        for tile in self._tiles.values():
+            tile.display.set_level(max(0.0, min(1.0, level)))
+            tile.display.advance()
+
+    def showEvent(self, event):  # noqa: N802
+        super().showEvent(event)
+        self._timer.start()
+
+    def hideEvent(self, event):  # noqa: N802
+        super().hideEvent(event)
+        self._timer.stop()
+
+
+class _StyleTile(QFrame):
+    """One thumbnail in the StylePicker: a scaled display plus its name."""
+
+    clicked = pyqtSignal(str)
+
+    def __init__(
+        self,
+        style_id: str,
+        label: str,
+        width: int,
+        height: int,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        from src.ui_pyqt6.recording_styles import build_display
+
+        self.style_id = style_id
+        self.setObjectName("style_tile")
+        self.setProperty("selected", False)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFixedSize(width, height + 22)
+
+        self.display = build_display(style_id, self)
+        self.display.set_state("recording")
+        self.display.set_elapsed("0:07")
+        self.display.set_mic_text("")
+        native = self.display.preferred_size()
+        # Fit the real display into the thumbnail rather than redrawing it at
+        # another size: a preview that is not the thing itself is a lie.
+        self._scale = min(
+            (width - 12) / native.width(), (height - 12) / native.height()
+        )
+        self.display.setFixedSize(native)
+        self.display.setVisible(False)
+
+        self._label = QLabel(label, self)
+        self._label.setObjectName("tile_label")
+        self._label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._label.setGeometry(0, height, width, 20)
+
+    def set_selected(self, selected: bool) -> None:
+        self.setProperty("selected", selected)
+        # A property change needs the style re-polished to take effect.
+        self.style().unpolish(self)
+        self.style().polish(self)
+        self.update()
+
+    def mouseReleaseEvent(self, event):  # noqa: N802
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit(self.style_id)
+        super().mouseReleaseEvent(event)
+
+    def paintEvent(self, event):  # noqa: N802
+        super().paintEvent(event)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        native = self.display.preferred_size()
+        painter.save()
+        painter.translate(
+            (self.width() - native.width() * self._scale) / 2,
+            (self.height() - 22 - native.height() * self._scale) / 2,
+        )
+        painter.scale(self._scale, self._scale)
+        self.display.render(
+            painter,
+            flags=QWidget.RenderFlag.DrawChildren,
+        )
+        painter.restore()
         painter.end()
