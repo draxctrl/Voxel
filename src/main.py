@@ -23,7 +23,7 @@ from src.history import HistoryStore
 from src.profiles import ProfileManager, resolve_effective_profile
 from src.voice_commands import VoiceCommandProcessor
 from src.app_detector import AppDetector
-from src.ui_pyqt6.theme import load_fonts, apply_theme
+from src.ui_pyqt6.theme import load_fonts, apply_theme, current_palette
 from src.ui_pyqt6.settings_ui import SettingsWindow
 from src.ui_pyqt6.recording_overlay import RecordingOverlay
 from src.ui_pyqt6.recording_styles import DEFAULT_STYLE
@@ -474,6 +474,85 @@ class VoxelApp:
         self._history_window.show()
         self._history_window.raise_()
         self._history_window.activateWindow()
+
+    # ------------------------------------------------------------------
+    # Instant apply
+    #
+    # The settings window has no Save button, so a setting is written the
+    # moment it is touched. Restarting everything on every toggle - which
+    # is what _on_settings_saved does - would make the window unusable, so
+    # each key knows the one subsystem it affects and nothing else moves.
+
+    #: Settings that need the audio stream reopened.
+    _MIC_KEYS = frozenset({"mic_device_name", "mic_device"})
+    #: Settings the global hotkey listener is built from.
+    _HOTKEY_KEYS = frozenset({"hotkey", "undo_hotkey", "activation_mode"})
+    #: Settings the text injector is built from.
+    _INJECTOR_KEYS = frozenset({"mute_sound", "always_copy"})
+    #: Settings that change which model or key the cleaner talks to.
+    _CLEANER_KEYS = frozenset({"llm_model", "whisper_model", "api_key"})
+
+    def apply_setting(self, key: str, value: object) -> None:
+        """Write one setting and restart only what it affects.
+
+        Every restart is guarded: a device that will not open, or a key
+        that will not authenticate, must not throw away the choice the
+        user just made - they would make it again and watch nothing
+        happen.
+        """
+        self._config.set(key, value)
+        self._config.save()
+        logger.info("Applied setting %s", key)
+
+        try:
+            if key in self._MIC_KEYS:
+                self._reopen_recorder()
+            elif key in self._HOTKEY_KEYS:
+                self._start_hotkey_listener()
+            elif key in self._INJECTOR_KEYS:
+                self._rebuild_injector()
+            elif key in self._CLEANER_KEYS:
+                self._init_groq()
+            elif key == "recording_style":
+                self._overlay.set_style(value)
+            elif key == "active_profile":
+                if self._cleaner:
+                    self._cleaner.set_prompt(self._profiles.get_active_prompt())
+            elif key == "voice_commands":
+                self._voice_commands.reload(value)
+            elif key == "theme":
+                apply_theme(self._qapp, self._resolve_theme())
+                if self._settings_window is not None:
+                    self._settings_window.restyle(current_palette())
+        except Exception as e:
+            logger.error("Setting '%s' was saved, but applying it failed: %s", key, e)
+
+    def _reopen_recorder(self) -> None:
+        """Close the current audio stream and open the chosen device."""
+        try:
+            self._recorder.close()
+        except Exception:
+            pass
+        self._recorder = MicRecorder(
+            device_name=self._config.get("mic_device_name", None),
+            device_index=self._config.get("mic_device", None),
+        )
+        self._report_mic_fallback()
+
+    def _rebuild_injector(self) -> None:
+        assets_dir = _get_assets_dir()
+        chime_path = os.path.join(assets_dir, "chime.wav")
+        if self._config.get("mute_sound", False) or not os.path.exists(chime_path):
+            chime_path = None
+        self._injector = TextInjector(
+            chime_path=chime_path,
+            always_copy=self._config.get("always_copy", False),
+        )
+
+    def _resolve_theme(self) -> str | None:
+        """The theme to apply: the user's override, or None to follow Windows."""
+        choice = self._config.get("theme", "system")
+        return None if choice in (None, "", "system") else choice
 
     def _on_settings_saved(self) -> None:
         logger.info("Settings saved, reinitializing")
