@@ -326,7 +326,16 @@ class VoxelApp:
                 cleaned_text = raw_text.strip()
             elif self._cleaner:
                 self._cleaner.set_prompt(profile["prompt"])
-                cleaned_text = self._cleaner.clean(raw_text)
+                # The transcript is what the user said; cleanup is a polish
+                # pass over it. A provider that retires a model, rate-limits
+                # us or simply times out must cost the polish, not the words:
+                # losing the whole dictation here reads to the user as the
+                # microphone having failed, with no clue that it did not.
+                try:
+                    cleaned_text = self._cleaner.clean(raw_text)
+                except Exception as e:
+                    logger.error("Cleanup failed, using the raw transcript: %s", e)
+                    cleaned_text = raw_text.strip()
             else:
                 cleaned_text = raw_text.strip()
 

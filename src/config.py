@@ -10,7 +10,11 @@ DEFAULT_CONFIG = {
     "language": "en",
     "auto_start": False,
     "whisper_model": "whisper-large-v3",
-    "llm_model": "llama-3.3-70b-versatile",
+    # Groq retires hosted models without notice; a config naming a retired one
+    # fails the cleanup step *after* transcription succeeded, so the user sees
+    # nothing typed and reads it as a broken microphone. RETIRED_LLM_MODELS
+    # below rewrites the ones we have seen go away.
+    "llm_model": "openai/gpt-oss-120b",
     "mute_sound": False,
     "voice_commands": {},
     "active_profile": "grammar_tidy",
@@ -29,6 +33,16 @@ DEFAULT_CONFIG = {
     "offline_mode": False,
     "offline_model": "base",
     "raw_mode": False,
+}
+
+
+#: Model ids Groq no longer serves. Anything listed here is rewritten to the
+#: current default on load, because the user never chose it — we did.
+RETIRED_LLM_MODELS = {
+    "llama-3.3-70b-versatile",
+    "llama3-70b-8192",
+    "llama3-8b-8192",
+    "mixtral-8x7b-32768",
 }
 
 
@@ -59,6 +73,7 @@ class Config:
             except (json.JSONDecodeError, OSError) as e:
                 logger.warning("Failed to load config from %s: %s", self._path, e)
         self._migrate_profile_ids()
+        self._migrate_llm_model()
 
     def _migrate_profile_ids(self) -> None:
         """Point old mode ids at their replacements after consolidation.
@@ -82,6 +97,14 @@ class Config:
                 app: ProfileManager.migrate_profile_id(pid) if isinstance(pid, str) else pid
                 for app, pid in app_profiles.items()
             }
+
+    def _migrate_llm_model(self) -> None:
+        """Move a config off a cleanup model Groq has retired."""
+        model = self._data.get("llm_model")
+        if isinstance(model, str) and model in RETIRED_LLM_MODELS:
+            logger.info("Cleanup model '%s' is retired -> '%s'",
+                        model, DEFAULT_CONFIG["llm_model"])
+            self._data["llm_model"] = DEFAULT_CONFIG["llm_model"]
 
     def save(self) -> None:
         os.makedirs(os.path.dirname(self._path), exist_ok=True)

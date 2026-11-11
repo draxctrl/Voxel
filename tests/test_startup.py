@@ -199,3 +199,35 @@ class TestThePressToTalkKeyCanAlsoCancel:
         with patch("src.main.HotkeyListener") as listener_cls:
             app._start_hotkey_listener()
         assert listener_cls.call_args.kwargs["on_cancel"] == app._cancel_recording
+
+
+class TestACleanupFailureDoesNotSwallowTheDictation:
+    """The transcript is the user's words; the LLM pass is a polish step. When
+    the polish fails, typing the raw transcript loses a little tidiness —
+    dropping it loses what they said."""
+
+    def _wire(self, app, cleaner_error):
+        app._transcriber = MagicMock()
+        app._transcriber.transcribe.return_value = "um so how do i access this"
+        app._cleaner = MagicMock()
+        app._cleaner.clean.side_effect = cleaner_error
+        app._injector = MagicMock()
+        app._injector.inject.return_value = MagicMock(pasted=True)
+        app._history = MagicMock()
+        app._voice_commands = MagicMock()
+        app._voice_commands.match.return_value = None
+        app._tray = MagicMock()
+
+    def test_the_raw_transcript_is_typed_when_cleanup_fails(self, app):
+        self._wire(app, RuntimeError("model_not_found"))
+
+        app._process_audio(b"\x00" * 100, 2.0)
+
+        app._injector.inject.assert_called_once_with("um so how do i access this")
+
+    def test_the_failure_is_recorded_in_history(self, app):
+        self._wire(app, RuntimeError("model_not_found"))
+
+        app._process_audio(b"\x00" * 100, 2.0)
+
+        assert app._history.add.called

@@ -21,7 +21,7 @@ class TestConfig:
         assert DEFAULT_CONFIG["language"] == "en"
         assert DEFAULT_CONFIG["auto_start"] is False
         assert DEFAULT_CONFIG["whisper_model"] == "whisper-large-v3"
-        assert DEFAULT_CONFIG["llm_model"] == "llama-3.3-70b-versatile"
+        assert DEFAULT_CONFIG["llm_model"] == "openai/gpt-oss-120b"
 
     def test_load_creates_default_if_missing(self, tmp_path):
         config_path = tmp_path / "config.json"
@@ -184,3 +184,29 @@ class TestMicNameBackfill:
 
         assert cfg.backfill_mic_name(None) is False
         assert cfg.get("mic_device_name") is None
+
+
+class TestARetiredCleanupModelIsMigrated:
+    """Groq retires model ids. A config still naming one made every dictation
+    fail with a 404 after transcription had already succeeded — the user saw
+    nothing appear and read it as 'the microphone is not working'."""
+
+    def test_a_retired_model_id_loads_as_the_current_default(self, tmp_path):
+        import json
+        path = tmp_path / "config.json"
+        path.write_text(json.dumps({"llm_model": "llama-3.3-70b-versatile"}))
+
+        cfg = Config(config_path=str(path))
+        cfg.load()
+
+        assert cfg.get("llm_model") == DEFAULT_CONFIG["llm_model"]
+
+    def test_a_model_we_did_not_retire_is_left_alone(self, tmp_path):
+        import json
+        path = tmp_path / "config.json"
+        path.write_text(json.dumps({"llm_model": "some/custom-model"}))
+
+        cfg = Config(config_path=str(path))
+        cfg.load()
+
+        assert cfg.get("llm_model") == "some/custom-model"
