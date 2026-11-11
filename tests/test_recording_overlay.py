@@ -159,3 +159,50 @@ class TestOverlayHostsAStyle:
         assert o.style == "island"
         assert o._display.style_id == "island"
         o.deleteLater()
+
+
+class TestOverlayResetsBetweenDictations:
+    """The overlay object is reused for every dictation, so anything left
+    behind by the last one shows up at the start of the next."""
+
+    def test_elapsed_restarts_at_zero(self, qapp, overlay):
+        overlay.show_recording()
+        for _ in range(5):
+            overlay._tick_elapsed()
+        assert overlay._display.elapsed_text == "0:05"
+        overlay._on_hide()
+        overlay.show_recording()
+        assert overlay._display.elapsed_text == "0:00"
+
+    def test_the_level_is_cleared_so_the_badge_does_not_open_mid_shout(self, qapp, overlay):
+        overlay.show_recording()
+        overlay._display.set_level(0.95)
+        overlay._on_hide()
+        overlay.show_recording()
+        assert overlay._display.level == 0.0
+
+    def test_the_mic_warning_survives_but_the_clipboard_notice_does_not(self, qapp, overlay):
+        """set_mic_text is a standing warning; "Paste with Ctrl+V" is a notice
+        for one dictation only."""
+        overlay._on_set_mic_text("⚠ Blue Yeti not found")
+        overlay._on_show_clipboard()
+        assert "Paste" in overlay._display.mic_text
+        overlay._on_hide()
+        overlay.show_recording()
+        assert "not found" in overlay._display.mic_text
+
+    def test_timers_stop_when_hidden(self, qapp, overlay):
+        """A hidden badge animating at 60fps burns a core for nothing."""
+        overlay.show_recording()
+        assert overlay._wave_timer.isActive()
+        assert overlay._elapsed_timer.isActive()
+        overlay._on_hide()
+        assert not overlay._wave_timer.isActive()
+        assert not overlay._elapsed_timer.isActive()
+
+    def test_the_state_goes_back_to_recording_after_processing(self, qapp, overlay):
+        overlay.show_recording()
+        overlay._on_show_processing()
+        overlay._on_hide()
+        overlay.show_recording()
+        assert overlay._display._status_text() == "Listening"
