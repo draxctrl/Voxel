@@ -14,6 +14,8 @@ a = Analysis(
         ('src/assets/chime_doubletap.wav', 'src/assets'),
         ('src/assets/chime_rising.wav', 'src/assets'),
         ('src/assets/icon.ico', 'src/assets'),
+        ('src/assets/icon.png', 'src/assets'),
+        ('src/assets/icon.icns', 'src/assets'),
         ('src/assets/fonts', 'src/assets/fonts'),
         ('src/assets/flags', 'src/assets/flags'),
     ],
