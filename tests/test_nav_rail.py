@@ -140,3 +140,22 @@ class TestTheRailFitsTheSmallestWindow:
         assert rail._status.y() > rail.entry_button("about").y(), (
             "the footer is not below the last entry"
         )
+
+
+class TestTheFooterFitsTheRail:
+    """The shipped default shortcut is Ctrl + Shift + Space, which is wider
+    than the rail. It must wrap or shrink, not run off the edge."""
+
+    def test_the_longest_shortcut_stays_inside_the_rail(self, qapp):
+        from src.ui_pyqt6.nav_rail import RAIL_WIDTH
+
+        rail = NavRail()
+        rail.set_status("idle", "Ctrl + Shift + Space")
+        rail.resize(RAIL_WIDTH, 620)
+        rail.show()
+        qapp.processEvents()
+        label = rail._status
+        needed = label.fontMetrics().horizontalAdvance(label.text())
+        assert label.wordWrap() or needed <= label.width(), (
+            "the shortcut is wider than the footer label and will be clipped"
+        )

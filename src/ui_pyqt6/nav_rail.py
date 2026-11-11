@@ -157,6 +157,9 @@ class NavRail(QWidget):
         footer.addWidget(self._dot, 0, Qt.AlignmentFlag.AlignVCenter)
         self._status = QLabel()
         self._status.setObjectName("rail_status")
+        # "Ctrl + Shift + Space" is wider than the rail; wrapping it beats
+        # running it off the edge, and the rail has the vertical room.
+        self._status.setWordWrap(True)
         footer.addWidget(self._status, 1)
         layout.addLayout(footer)
 

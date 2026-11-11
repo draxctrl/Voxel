@@ -77,7 +77,7 @@ class PlaceholderPane(Pane):
 #: pane id -> "module:ClassName", or None while that pane is still a
 #: placeholder. Each pane task fills in its own line.
 _REGISTRY: dict[str, str | None] = {
-    "writing_style": None,
+    "writing_style": "writing_style:WritingStylePane",
     "voice_commands": None,
     "language": None,
     "microphone": None,
