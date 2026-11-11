@@ -161,10 +161,42 @@ class TestTheFooterFitsTheRail:
         )
 
 
+class TestTheEntriesHaveRoomToBreathe:
+    """Rows pressed flat against each other read as one block of text."""
+
+    def test_there_is_a_gap_between_entries_in_a_group(self, qapp):
+        from src.ui_pyqt6.nav_rail import ENTRY_GAP
+
+        assert ENTRY_GAP >= 2
+        rail = NavRail()
+        rail.resize(198, 620)
+        rail.show()
+        qapp.processEvents()
+        voice = rail.entry_button("voice_commands")
+        language = rail.entry_button("language")
+        gap = language.y() - (voice.y() + voice.height())
+        assert gap >= 2, f"only {gap}px between two entries"
+
+
 class TestTheRailCarriesTheAppMark:
     def test_the_logo_sits_beside_the_name(self, qapp):
         rail = NavRail()
         assert rail.logo_is_shown() is True
+
+    def test_the_logo_is_drawn_from_art_made_for_this_size(self, qapp):
+        """icon.png is 512px of soft glow. Squashed to rail size it turns to
+        mush, which is why the icon set has per-size artwork in the .ico -
+        this must use that, not resample the big one."""
+        from src.ui_pyqt6.nav_rail import _logo_path
+
+        assert _logo_path().lower().endswith(".ico")
+
+    def test_the_logo_pixmap_is_the_size_the_rail_asks_for(self, qapp):
+        rail = NavRail()
+        from src.ui_pyqt6.nav_rail import LOGO_SIZE
+
+        pixmap = rail._logo.pixmap()
+        assert max(pixmap.width(), pixmap.height()) == LOGO_SIZE
 
     def test_the_name_is_still_there(self, qapp):
         rail = NavRail()

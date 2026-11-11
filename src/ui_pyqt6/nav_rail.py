@@ -10,7 +10,7 @@ import os
 import sys
 
 from PyQt6.QtCore import Qt, QSize, pyqtSignal
-from PyQt6.QtGui import QColor, QPainter, QPixmap
+from PyQt6.QtGui import QColor, QIcon, QPainter
 from PyQt6.QtWidgets import (
     QFrame,
     QSizePolicy,
@@ -29,19 +29,28 @@ from .theme import current_palette
 RAIL_WIDTH = 198
 
 #: How tall the app mark is beside the name.
-LOGO_SIZE = 22
+LOGO_SIZE = 24
+
+#: Breathing room between two entries in the same group.
+ENTRY_GAP = 3
 
 
 def _logo_path() -> str | None:
-    """The app icon, or None when it is not bundled."""
+    """The app icon, or None when it is not bundled.
+
+    The .ico rather than the .png: the icon set is drawn per size - a soft
+    glow turns to mush when it is scaled down - and the .ico carries the
+    32px and 48px artwork made for exactly this job. icon.png is 512px and
+    squashing it here is what made the mark look muddy.
+    """
     meipass = getattr(sys, "_MEIPASS", None)
     candidates = []
     if meipass:
-        candidates.append(os.path.join(meipass, "src", "assets", "icon.png"))
-        candidates.append(os.path.join(meipass, "assets", "icon.png"))
+        candidates.append(os.path.join(meipass, "src", "assets", "icon.ico"))
+        candidates.append(os.path.join(meipass, "assets", "icon.ico"))
     here = os.path.dirname(os.path.abspath(__file__))
-    candidates.append(os.path.normpath(os.path.join(here, "assets", "icon.png")))
-    candidates.append(os.path.normpath(os.path.join(here, "..", "assets", "icon.png")))
+    candidates.append(os.path.normpath(os.path.join(here, "assets", "icon.ico")))
+    candidates.append(os.path.normpath(os.path.join(here, "..", "assets", "icon.ico")))
     for candidate in candidates:
         if os.path.isfile(candidate):
             return candidate
@@ -160,16 +169,11 @@ class NavRail(QWidget):
         self._has_logo = False
         path = _logo_path()
         if path:
-            pixmap = QPixmap(path)
+            # QIcon picks the nearest size the .ico actually contains and
+            # scales from that, rather than from the largest one.
+            pixmap = QIcon(path).pixmap(QSize(LOGO_SIZE, LOGO_SIZE))
             if not pixmap.isNull():
-                self._logo.setPixmap(
-                    pixmap.scaled(
-                        LOGO_SIZE,
-                        LOGO_SIZE,
-                        Qt.AspectRatioMode.KeepAspectRatio,
-                        Qt.TransformationMode.SmoothTransformation,
-                    )
-                )
+                self._logo.setPixmap(pixmap)
                 self._logo.setVisible(True)
                 self._has_logo = True
         brand_row.addWidget(self._logo, 0, Qt.AlignmentFlag.AlignVCenter)
@@ -185,7 +189,9 @@ class NavRail(QWidget):
             group.setObjectName("rail_group")
             layout.addWidget(group)
             _soft_gap(layout, 2)
-            for pane_id, label, icon_name in rows:
+            for index, (pane_id, label, icon_name) in enumerate(rows):
+                if index:
+                    _soft_gap(layout, ENTRY_GAP)
                 button = self._make_entry(pane_id, label, icon_name)
                 self._buttons[pane_id] = button
                 layout.addWidget(button)

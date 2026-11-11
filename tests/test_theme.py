@@ -157,9 +157,11 @@ class TestBuildQss:
         definition in the shared sheet is one that drifts."""
         assert "QComboBox QAbstractItemView" not in build_qss(DARK)
 
-    def test_font_stack_falls_back_to_segoe(self):
-        """If Inter fails to load, text must still render in the system face."""
-        assert '"Inter", "Segoe UI"' in build_qss(DARK)
+    def test_font_stack_falls_back_to_the_bundled_face(self):
+        """If Windows' own UI font is missing, text must still render in
+        the face Voxel ships."""
+        assert '"Inter"' in build_qss(DARK)
+        assert 'sans-serif' in build_qss(DARK)
 
     def test_scroll_area_border_is_removed_centrally(self):
         # Per-window "QScrollArea { border: none }" overrides are what sent
@@ -538,3 +540,27 @@ class TestSmallTextIsSnappedToThePixelGrid:
     def test_the_application_font_is_the_bundled_one(self, qapp):
         apply_theme(qapp, "dark")
         assert qapp.font().family() == "Inter"
+
+
+class TestTheUiFontIsTheOneWindowsDrawsBest:
+    """Inter is a web font with minimal hinting; at 11-13px on Windows its
+    stems land between pixels and the text reads as soft. Segoe UI Variable
+    is hinted for exactly these sizes and is what every native window uses,
+    so it is first in the stack with Inter behind it."""
+
+    def test_segoe_ui_variable_comes_first(self):
+        from src.ui_pyqt6.theme import FONT_STACK
+
+        assert FONT_STACK.startswith('"Segoe UI Variable Text"')
+        assert "Inter" in FONT_STACK
+
+    def test_the_stylesheet_uses_that_stack(self):
+        assert '"Segoe UI Variable Text"' in build_qss(DARK)
+
+    def test_the_application_font_does_not_force_grey_antialiasing(self, qapp):
+        """PreferAntialias turns off ClearType's subpixel rendering, which
+        is the thing making the text crisp in the first place."""
+        from PyQt6.QtGui import QFont
+
+        apply_theme(qapp, "dark")
+        assert qapp.font().styleStrategy() != QFont.StyleStrategy.PreferAntialias

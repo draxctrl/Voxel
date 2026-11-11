@@ -8,12 +8,12 @@ from __future__ import annotations
 
 import logging
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QGuiApplication
+from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtGui import QGuiApplication, QIcon
 from PyQt6.QtWidgets import QHBoxLayout, QStackedWidget, QWidget
 
 from .keys import pretty_hotkey
-from .nav_rail import NavRail
+from .nav_rail import LOGO_SIZE, NavRail, _logo_path
 from .panes import Pane, PaneContext, all_panes
 from .panes.widgets import repaint_with
 from .theme import current_palette
@@ -32,6 +32,7 @@ class SettingsWindow(QWidget):
         self.ctx = ctx
         self.setObjectName("settings_window")
         self.setWindowTitle("Voxel")
+        self._set_window_icon()
         self.resize(*DEFAULT_SIZE)
         self.setMinimumSize(*MINIMUM_SIZE)
 
@@ -65,6 +66,24 @@ class SettingsWindow(QWidget):
         first = self._rail.current
         if first in self._panes:
             self.show_pane(first)
+
+    def _set_window_icon(self) -> None:
+        """Put the same mark in the title bar as in the rail.
+
+        The icon set draws a deliberately different, flattened mark at
+        16px for the tray. Letting Windows pick that frame for the title
+        bar puts two different-looking logos on one window, so the icon is
+        built from the one rendition the rail uses.
+        """
+        path = _logo_path()
+        if not path:
+            return
+        pixmap = QIcon(path).pixmap(QSize(LOGO_SIZE, LOGO_SIZE))
+        if pixmap.isNull():
+            return
+        icon = QIcon()
+        icon.addPixmap(pixmap)
+        self.setWindowIcon(icon)
 
     # ------------------------------------------------------------------
     # panes

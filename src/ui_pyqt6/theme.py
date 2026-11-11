@@ -152,7 +152,14 @@ SCROLLBAR_THICKNESS = 8
 #: Corner radius of a grouped settings card, shared with ios_layout.
 CARD_RADIUS = 12
 
-FONT_STACK = '"Inter", "Segoe UI", system-ui, sans-serif'
+#: Windows' own UI typeface first. Inter is a web font with minimal
+#: hinting: at 11-13px its stems land between pixels and the text reads as
+#: soft, which is what makes a Qt window look unfinished beside a native
+#: one. Segoe UI Variable is hinted for exactly these sizes. Inter stays
+#: behind it as the fallback, and is still bundled for machines without it.
+FONT_STACK = (
+    '"Segoe UI Variable Text", "Segoe UI", "Inter", system-ui, sans-serif'
+)
 
 #: Loaded font family names, so repeated calls don't re-register the same file.
 _loaded_fonts: set[str] = set()
@@ -497,19 +504,23 @@ def current_palette() -> dict[str, str]:
 def _set_application_font(app) -> None:
     """Make small text crisp.
 
-    Qt's default hinting lets the stems of 11-13px letters fall between
-    pixels, which reads as soft, slightly smudged text - the single
-    biggest thing that makes a Qt window look unfinished next to a native
-    one. Full hinting snaps them to the grid. Set on the application font
-    so every widget inherits it; stylesheets override the size, not this.
+    Two things decide whether small text looks sharp: the typeface, and
+    hinting. Windows' own UI face is hinted for 11-13px; full hinting
+    snaps its stems to the pixel grid. Set on the application font so
+    every widget inherits it - stylesheets override the size, not this.
     """
     from PyQt6.QtGui import QFont, QFontDatabase
 
+    families = QFontDatabase.families()
     font = app.font()
-    if "Inter" in QFontDatabase.families():
-        font.setFamily("Inter")
+    for candidate in ("Segoe UI Variable Text", "Segoe UI", "Inter"):
+        if candidate in families:
+            font.setFamily(candidate)
+            break
     font.setHintingPreference(QFont.HintingPreference.PreferFullHinting)
-    font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
+    # No style strategy: PreferAntialias asks for grey antialiasing and
+    # turns ClearType's subpixel rendering off, which is the opposite of
+    # what makes small text sharp here.
     app.setFont(font)
 
 

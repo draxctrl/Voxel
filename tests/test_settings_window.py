@@ -138,3 +138,25 @@ class TestARestyleIsActuallyRepainted:
         assert self._pixel(qapp, win, 900, 580) == palette_for("dark")["pane"].lower()
         win.restyle(palette_for("light"))
         assert self._pixel(qapp, win, 900, 580) == palette_for("light")["pane"].lower()
+
+
+class TestTheWindowCarriesTheAppIcon:
+    """The icon set draws a different, flattened mark at 16px, so letting
+    Windows pick that for the title bar puts two different-looking logos
+    on the same window. Both come from the one 32px rendition instead."""
+
+    def test_the_window_has_an_icon(self, qapp, ctx):
+        win = SettingsWindow(ctx)
+        assert not win.windowIcon().isNull()
+
+    def test_the_title_bar_mark_matches_the_rail_mark(self, qapp, ctx):
+        win = SettingsWindow(ctx)
+        from_window = win.windowIcon().pixmap(16, 16).toImage()
+        rail_pixmap = win._rail._logo.pixmap()
+        assert not rail_pixmap.isNull()
+        scaled = rail_pixmap.toImage().scaled(16, 16)
+        # Same artwork, so the centre pixel is the same colour family.
+        a = from_window.pixelColor(8, 8)
+        b = scaled.pixelColor(8, 8)
+        assert abs(a.red() - b.red()) < 60
+        assert abs(a.blue() - b.blue()) < 60

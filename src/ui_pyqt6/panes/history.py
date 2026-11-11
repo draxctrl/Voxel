@@ -79,7 +79,7 @@ class _EntryRow(QFrame):
         layout.setSpacing(10)
 
         self._when = QLabel(_when(entry.get("timestamp", "")))
-        self._when.setFixedWidth(64)
+        self._when.setFixedWidth(58)
         self._when.setAlignment(
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
         )
@@ -87,6 +87,11 @@ class _EntryRow(QFrame):
 
         self._text = QLabel(_short(self._full_text))
         self._text.setWordWrap(True)
+        # Top, like the time beside it: centred text next to a top-aligned
+        # time reads as two columns that do not belong together.
+        self._text.setAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
+        )
         layout.addWidget(self._text, 1)
 
         self.copy_button = QPushButton()

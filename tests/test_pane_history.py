@@ -4,6 +4,7 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
+from PyQt6.QtCore import Qt
 
 from src.ui_pyqt6.panes.history import PAGE_SIZE, HistoryPane
 
@@ -143,3 +144,36 @@ class TestALargeHistoryStaysUsable:
 class TestThePaneDeclaresWhatItOwns:
     def test_it_owns_no_settings(self):
         assert HistoryPane.OWNS == frozenset()
+
+
+class TestTheTimeLinesUpWithTheText:
+    """A time pinned to the top of the row while the text floats in the
+    middle reads as two columns that do not belong together."""
+
+    def test_the_time_and_the_first_line_share_a_top_edge(self, qapp, ctx):
+        ctx.history.add("raw", "I have a car.", "en", 1.0, profile="raw")
+        pane = HistoryPane(ctx)
+        pane.restyle(ctx.palette())
+        pane.refresh()
+        row = pane.row_widgets()[0]
+        row.resize(700, row.sizeHint().height())
+        row.show()
+        qapp.processEvents()
+        # Both labels occupy the same box; what differs is where the text
+        # sits inside it, so the alignment flag is the thing to check.
+        assert row._text.alignment() & Qt.AlignmentFlag.AlignTop, (
+            "the text is centred in its box while the time is at the top"
+        )
+        assert row._when.alignment() & Qt.AlignmentFlag.AlignTop
+
+    def test_a_wrapped_entry_still_starts_level_with_its_time(self, qapp, ctx):
+        ctx.history.add("raw", "word " * 60, "en", 1.0, profile="raw")
+        pane = HistoryPane(ctx)
+        pane.restyle(ctx.palette())
+        pane.refresh()
+        row = pane.row_widgets()[0]
+        row.resize(700, row.sizeHint().height())
+        row.show()
+        qapp.processEvents()
+        assert row._text.alignment() & Qt.AlignmentFlag.AlignTop
+        assert row._when.y() == row._text.y()

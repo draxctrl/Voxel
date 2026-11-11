@@ -27,6 +27,7 @@ from src.ui_pyqt6.theme import load_fonts, apply_theme, current_palette
 from src.ui_pyqt6.recording_overlay import RecordingOverlay
 from src.ui_pyqt6.recording_styles import DEFAULT_STYLE
 from src.ui_pyqt6.splash import SplashScreen
+from src.ui_pyqt6.keys import pretty_hotkey
 from src.ui_pyqt6.settings_window import SettingsWindow
 from src.ui_pyqt6.panes import PaneContext
 
@@ -146,7 +147,10 @@ class VoxelApp:
             style=self._config.get("recording_style", DEFAULT_STYLE),
             level_provider=self._overlay_level,
         )
-        self._splash = SplashScreen()
+        # The splash names the user's own shortcut, not the default.
+        self._splash = SplashScreen(
+            shortcut=pretty_hotkey(self._config.get("hotkey", ""))
+        )
 
     def _init_groq(self) -> bool:
         api_key = self._config.get("api_key", "")
