@@ -26,6 +26,7 @@ from src.app_detector import AppDetector
 from src.ui_pyqt6.theme import load_fonts, apply_theme
 from src.ui_pyqt6.settings_ui import SettingsWindow
 from src.ui_pyqt6.recording_overlay import RecordingOverlay
+from src.ui_pyqt6.recording_styles import DEFAULT_STYLE
 from src.ui_pyqt6.splash import SplashScreen
 from src.ui_pyqt6.history_window import HistoryWindow
 from src.ui_pyqt6.stats_window import StatsWindow
@@ -146,7 +147,13 @@ class VoxelApp:
         )
         self._history_window = HistoryWindow(self._history)
         self._stats_window = StatsWindow(self._history)
-        self._overlay = RecordingOverlay()
+        # The provider is a bound lambda rather than self._recorder.current_level,
+        # because _on_settings_saved replaces the recorder: a bound method would
+        # keep animating from the stream that was closed.
+        self._overlay = RecordingOverlay(
+            style=self._config.get("recording_style", DEFAULT_STYLE),
+            level_provider=self._overlay_level,
+        )
         self._splash = SplashScreen()
 
     def _init_groq(self) -> bool:
@@ -346,6 +353,21 @@ class VoxelApp:
         except (AttributeError, TypeError) as e:
             logger.info("Live theme switching unavailable on this Qt build: %s", e)
 
+    def _overlay_level(self) -> float:
+        """Live microphone loudness for the recording display, 0.0 to 1.0.
+
+        Read through self._recorder every time rather than bound once: settings
+        changes replace the recorder, and a stale binding would animate from a
+        closed stream.
+        """
+        recorder = getattr(self, "_recorder", None)
+        if recorder is None:
+            return 0.0
+        try:
+            return float(recorder.current_level())
+        except Exception:
+            return 0.0
+
     def _report_mic_fallback(self) -> None:
         """Say which microphone is actually in use, and warn if it isn't the chosen one.
 
@@ -436,6 +458,12 @@ class VoxelApp:
             device_index=self._config.get("mic_device", None),
         )
         self._report_mic_fallback()
+
+        # The chosen recording display may have changed.
+        try:
+            self._overlay.set_style(self._config.get("recording_style", DEFAULT_STYLE))
+        except Exception as e:
+            logger.warning("Could not switch recording display: %s", e)
 
         # Reload voice commands
         self._voice_commands.reload(self._config.get("voice_commands", {}))

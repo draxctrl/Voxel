@@ -24,6 +24,8 @@ DEFAULT_CONFIG = {
     "mic_device": None,
     # "hold" = press and hold to record; "toggle" = press to start, press to stop.
     "activation_mode": "hold",
+    # Which recording display the overlay uses: orb, waveform or island.
+    "recording_style": "orb",
     "offline_mode": False,
     "offline_model": "base",
     "raw_mode": False,

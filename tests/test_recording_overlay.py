@@ -24,7 +24,7 @@ def overlay(qapp):
 class TestMicText:
     def test_set_mic_text_updates_the_label(self, overlay):
         overlay.set_mic_text("Blue Yeti")
-        assert overlay._mic_label.text() == "Blue Yeti"
+        assert overlay._display.mic_text == "Blue Yeti"
 
     def test_mic_text_survives_hide(self, overlay):
         """The warning must persist across dictations, not show once.
@@ -34,14 +34,14 @@ class TestMicText:
         """
         overlay.set_mic_text("⚠ Blue Yeti not found — using Realtek Mic")
         overlay._on_hide()
-        assert "not found" in overlay._mic_label.text()
+        assert "not found" in overlay._display.mic_text
 
     def test_long_mic_text_is_truncated(self, overlay):
         """Warning strings are far longer than device names and would overflow."""
         long_text = "⚠ Microphone (Blue Yeti Stereo) not found — using Microphone Array (Realtek Audio)"
         overlay.set_mic_text(long_text)
-        assert len(overlay._mic_label.text()) <= 28
-        assert overlay._mic_label.text().endswith("…")
+        assert len(overlay._display.mic_text) <= 28
+        assert overlay._display.mic_text.endswith("…")
 
 
 class TestOverlayStaysTranslucent:
@@ -80,3 +80,82 @@ class TestOverlayStaysTranslucent:
 
 
 LIGHT_BG = "#f2f2f7"
+
+
+class TestOverlayHostsAStyle:
+    """The overlay became a host: it builds the chosen display, feeds it the
+    real microphone level, and positions itself."""
+
+    def test_it_builds_the_configured_style(self, qapp):
+        from src.ui_pyqt6.recording_overlay import RecordingOverlay
+        for style_id in ("orb", "waveform", "island"):
+            o = RecordingOverlay(style=style_id)
+            assert o.style == style_id
+            assert o._display.style_id == style_id
+            o.deleteLater()
+
+    def test_an_unknown_configured_style_still_shows_something(self, qapp):
+        """A hand-edited or downgraded config must not break every dictation."""
+        from src.ui_pyqt6.recording_overlay import RecordingOverlay
+        from src.ui_pyqt6.recording_styles import DEFAULT_STYLE
+        o = RecordingOverlay(style="spinning-pizza")
+        assert o._display.style_id == DEFAULT_STYLE
+        o.deleteLater()
+
+    def test_the_level_provider_feeds_the_display(self, qapp):
+        from src.ui_pyqt6.recording_overlay import RecordingOverlay
+        o = RecordingOverlay(level_provider=lambda: 0.75)
+        o._tick_animation()
+        assert o._display.level == pytest.approx(0.75)
+        o.deleteLater()
+
+    def test_a_failing_level_provider_does_not_stop_the_animation(self, qapp):
+        """A provider that raises must cost a frame, never the recording."""
+        from src.ui_pyqt6.recording_overlay import RecordingOverlay
+
+        def boom():
+            raise RuntimeError("audio subsystem went away")
+
+        o = RecordingOverlay(level_provider=boom)
+        o.show_recording()
+        qapp.processEvents()
+        o._tick_animation()
+        o._tick_animation()
+        assert o._wave_timer.isActive()
+        o.deleteLater()
+
+    def test_no_level_provider_is_fine(self, qapp):
+        from src.ui_pyqt6.recording_overlay import RecordingOverlay
+        o = RecordingOverlay()
+        o._tick_animation()
+        assert o._display.level == 0.0
+        o.deleteLater()
+
+    def test_every_style_keeps_a_translucent_window(self, qapp):
+        """The application stylesheet reaches this window; if it wins, the
+        badge becomes an opaque slab on every dictation."""
+        from PyQt6.QtGui import QPixmap, QColor
+        from src.ui_pyqt6.recording_overlay import RecordingOverlay
+        from src.ui_pyqt6.theme import apply_theme
+        for theme in ("light", "dark"):
+            apply_theme(qapp, theme)
+            for style_id in ("orb", "waveform", "island"):
+                o = RecordingOverlay(style=style_id)
+                o.show_recording()
+                qapp.processEvents()
+                pm = QPixmap(o.size())
+                pm.fill(QColor(0, 255, 0))
+                o.render(pm)
+                corner = pm.toImage().pixelColor(1, 1).name()
+                assert corner == "#00ff00", (
+                    f"{style_id}/{theme}: corner is {corner} - the window is opaque"
+                )
+                o.deleteLater()
+
+    def test_set_style_swaps_the_display(self, qapp):
+        from src.ui_pyqt6.recording_overlay import RecordingOverlay
+        o = RecordingOverlay(style="orb")
+        o.set_style("island")
+        assert o.style == "island"
+        assert o._display.style_id == "island"
+        o.deleteLater()
