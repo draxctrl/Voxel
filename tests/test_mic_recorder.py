@@ -301,3 +301,35 @@ class TestCurrentLevel:
         rec._note_level(self._chunk(8000))
         rec.start()
         assert rec.current_level() == 0.0
+
+
+class TestLevelMeasurementCannotStopCapture:
+    """The level is cosmetic. It must never be able to end the recording."""
+
+    def test_an_odd_sized_chunk_does_not_raise(self):
+        from unittest.mock import patch
+        from src.mic_recorder import MicRecorder
+        with patch.object(MicRecorder, "_start_stream", lambda self: None):
+            rec = MicRecorder()
+        rec._note_level(b"\x01\x02\x03")   # struct.unpack would reject this
+        assert rec.current_level() >= 0.0
+
+    def test_the_capture_loop_keeps_going_when_measurement_fails(self):
+        """A struct error used to break out of the read loop, after which the
+        preroll never filled again and every later recording was empty."""
+        from unittest.mock import MagicMock, patch
+        from src.mic_recorder import MicRecorder
+        with patch.object(MicRecorder, "_start_stream", lambda self: None):
+            rec = MicRecorder()
+
+        chunks = [b"\x00\x01" * 256] * 4
+        stream = MagicMock()
+        stream.read.side_effect = lambda *a, **k: chunks.pop(0) if chunks else (
+            setattr(rec, "_stream_running", False) or b""
+        )
+        rec._stream = stream
+        rec._stream_running = True
+        with patch.object(MicRecorder, "_note_level", side_effect=ValueError("boom")):
+            rec._continuous_loop()
+
+        assert len(rec._preroll) >= 4, "the capture loop stopped on a level error"

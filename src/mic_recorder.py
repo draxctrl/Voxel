@@ -242,7 +242,14 @@ class MicRecorder:
                 data = self._stream.read(CHUNK_SIZE, exception_on_overflow=False)
                 if not isinstance(data, bytes):
                     data = bytes(data)
-                self._note_level(data)
+                try:
+                    self._note_level(data)
+                except Exception as e:
+                    # The level is cosmetic. A malformed chunk must cost one
+                    # animation frame, never the capture loop: breaking out of
+                    # here leaves the preroll empty and every later recording
+                    # silent until the app is restarted.
+                    logger.debug("Could not measure chunk level: %s", e)
                 with self._lock:
                     if self._recording:
                         self._active_frames.append(data)
@@ -327,7 +334,8 @@ class MicRecorder:
         count = len(chunk) // 2
         if count == 0:
             return
-        samples = struct.unpack(f"<{count}h", chunk)
+        # An odd trailing byte would make unpack reject the whole buffer.
+        samples = struct.unpack_from(f"<{count}h", chunk)
         rms = (sum(s * s for s in samples) / count) ** 0.5
         new = min(1.0, rms / LEVEL_FULL_SCALE_RMS)
         with self._lock:

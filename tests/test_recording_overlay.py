@@ -105,6 +105,7 @@ class TestOverlayHostsAStyle:
     def test_the_level_provider_feeds_the_display(self, qapp):
         from src.ui_pyqt6.recording_overlay import RecordingOverlay
         o = RecordingOverlay(level_provider=lambda: 0.75)
+        o.show_recording()
         o._tick_animation()
         assert o._display.level == pytest.approx(0.75)
         o.deleteLater()
@@ -206,3 +207,65 @@ class TestOverlayResetsBetweenDictations:
         overlay._on_hide()
         overlay.show_recording()
         assert overlay._display._status_text() == "Listening"
+
+
+class TestTheClipboardNoticeCannotEatTheNextRecording:
+    """The notice hides itself after two seconds. If a new dictation starts
+    inside that window, the orphaned timer used to hide the live badge."""
+
+    def test_starting_a_recording_cancels_the_pending_hide(self, qapp, overlay):
+        overlay._on_show_clipboard()
+        overlay.show_recording()
+        qapp.processEvents()
+        assert overlay._notice_timer is not None
+        assert not overlay._notice_timer.isActive(), (
+            "the clipboard notice's hide timer is still armed during a recording"
+        )
+
+    def test_a_pending_hide_does_not_hide_a_live_recording(self, qapp, overlay):
+        overlay._on_show_clipboard()
+        overlay.show_recording()
+        qapp.processEvents()
+        overlay._on_hide_notice()          # as if the timer fired anyway
+        assert overlay._wave_timer.isActive(), "the badge was hidden mid-dictation"
+        assert overlay._is_recording
+
+
+class TestTheBadgeStopsReactingWhenItIsNotRecording:
+    """The capture loop never stops, so the level keeps moving with the room.
+    Showing that during Processing is the same lie the spec set out to remove."""
+
+    def test_the_level_is_ignored_once_recording_has_stopped(self, qapp, overlay):
+        overlay._level_provider = lambda: 0.9
+        overlay.show_recording()
+        qapp.processEvents()
+        overlay._tick_animation()
+        assert overlay._display.level > 0.5
+
+        overlay._on_show_processing()
+        for _ in range(40):
+            overlay._tick_animation()
+        assert overlay._display.level < 0.1, (
+            "the badge is still swelling with room noise while processing"
+        )
+
+
+class TestSwappingStyleKeepsTheState:
+    def test_the_new_display_shows_the_state_the_old_one_had(self, qapp, overlay):
+        overlay.show_recording()
+        overlay._on_show_processing()
+        overlay.set_style("island")
+        assert overlay._display._status_text() == "Processing"
+
+    def test_the_new_display_keeps_the_elapsed_time(self, qapp, overlay):
+        overlay.show_recording()
+        for _ in range(7):
+            overlay._tick_elapsed()
+        overlay.set_style("waveform")
+        assert overlay._display.elapsed_text == "0:07"
+
+    def test_an_unknown_style_is_not_rebuilt_on_every_save(self, qapp, overlay):
+        overlay.set_style("spinning-pizza")
+        first = overlay._display
+        overlay.set_style("spinning-pizza")
+        assert overlay._display is first

@@ -317,6 +317,9 @@ class StylePicker(QWidget):
         for tile in self._tiles.values():
             tile.display.set_level(max(0.0, min(1.0, level)))
             tile.display.advance()
+            # The display is a hidden child, so its own update() is dropped.
+            # The tile is what the user sees, so the tile is what must repaint.
+            tile.update()
 
     def showEvent(self, event):  # noqa: N802
         super().showEvent(event)

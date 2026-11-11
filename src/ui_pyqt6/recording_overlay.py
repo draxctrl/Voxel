@@ -111,6 +111,8 @@ class RecordingOverlay(QWidget):
         self._elapsed_seconds = 0
         self._level_provider = level_provider
         self._style = style
+        self._state = "recording"
+        self._elapsed_text = "0:00"
 
         self._mic_name = _truncate_mic_name(_get_mic_name())
 
@@ -138,6 +140,14 @@ class RecordingOverlay(QWidget):
         self._elapsed_timer.setInterval(_TIMER_INTERVAL_MS)
         self._elapsed_timer.timeout.connect(self._tick_elapsed)
 
+        # The clipboard notice hides itself after a moment. It must be a timer
+        # we can cancel: a fire-and-forget singleShot would hide the *next*
+        # dictation if the user started one within those two seconds.
+        self._notice_timer = QTimer(self)
+        self._notice_timer.setSingleShot(True)
+        self._notice_timer.setInterval(2000)
+        self._notice_timer.timeout.connect(self._on_hide_notice)
+
         self._reposition()
 
     # -----------------------------------------------------------------------
@@ -150,8 +160,11 @@ class RecordingOverlay(QWidget):
         return self._display.style_id if self._display is not None else self._style
 
     def set_style(self, style_id: str) -> None:
-        """Swap the display, keeping the device line."""
-        if self._display is not None and self._display.style_id == style_id:
+        """Swap the display, keeping the state, the timer and the device line."""
+        # Compare against the id that was *asked* for as well as the one that
+        # resolved, or an unrecognised config value rebuilds the same display
+        # on every save.
+        if self._display is not None and style_id in (self._style, self._display.style_id):
             return
         self._install_display(style_id)
 
@@ -162,6 +175,10 @@ class RecordingOverlay(QWidget):
             self._display.deleteLater()
         self._style = style_id
         self._display = build_display(style_id, self)
+        # A swap mid-dictation must not reset the badge to "Listening" at 0:00
+        # while a transcription is still running.
+        self._display.set_state(self._state)
+        self._display.set_elapsed(self._elapsed_text)
         self._display.set_mic_text(self._mic_name)
         self._display.setFixedSize(self._display.preferred_size())
         self._layout.addWidget(self._display)
@@ -191,6 +208,15 @@ class RecordingOverlay(QWidget):
         A level provider that raises costs this frame and nothing else — the
         audio subsystem disappearing must not take the recording with it.
         """
+        # Only a live recording may move the badge. The capture loop keeps
+        # running afterwards, so reading the level during processing would
+        # show the badge reacting to a room that is no longer being recorded.
+        if not self._is_recording:
+            if self._display is not None:
+                self._display.set_level(self._display.level * 0.85)
+                self._display.advance()
+            return
+
         level = 0.0
         if self._level_provider is not None:
             try:
@@ -206,7 +232,8 @@ class RecordingOverlay(QWidget):
         self._elapsed_seconds += 1
         mins = self._elapsed_seconds // 60
         secs = self._elapsed_seconds % 60
-        self._display.set_elapsed(f"{mins}:{secs:02d}")
+        self._elapsed_text = f"{mins}:{secs:02d}"
+        self._display.set_elapsed(self._elapsed_text)
 
     # -----------------------------------------------------------------------
     # Internal slots (always run on the GUI thread)
@@ -216,6 +243,9 @@ class RecordingOverlay(QWidget):
         self._is_recording = True
         self._is_processing = False
         self._elapsed_seconds = 0
+        self._state = "recording"
+        self._elapsed_text = "0:00"
+        self._notice_timer.stop()
 
         # Nothing from the previous dictation may leak into this one: a stale
         # level would open the badge mid-shout.
@@ -234,6 +264,8 @@ class RecordingOverlay(QWidget):
     def _on_show_processing(self) -> None:
         self._is_processing = True
         self._is_recording = False
+        self._state = "processing"
+        self._notice_timer.stop()
 
         self._display.set_state("processing")
         self._elapsed_timer.stop()
@@ -247,6 +279,8 @@ class RecordingOverlay(QWidget):
     def _on_show_clipboard(self) -> None:
         self._is_recording = False
         self._is_processing = False
+        self._state = "clipboard"
+        self._elapsed_text = ""
 
         self._wave_timer.stop()
         self._elapsed_timer.stop()
@@ -262,7 +296,13 @@ class RecordingOverlay(QWidget):
         super().show()
         self.raise_()
 
-        QTimer.singleShot(2000, self._on_hide)
+        self._notice_timer.start()
+
+    def _on_hide_notice(self) -> None:
+        """Hide the clipboard notice — unless a new dictation has started."""
+        if self._is_recording or self._is_processing:
+            return
+        self._on_hide()
 
     def _on_set_mic_text(self, text: str) -> None:
         """Set the device line, and make it the value _on_hide() restores.
@@ -276,6 +316,7 @@ class RecordingOverlay(QWidget):
     def _on_hide(self) -> None:
         self._is_recording = False
         self._is_processing = False
+        self._notice_timer.stop()
 
         # A hidden badge animating at 60fps burns a core for nothing.
         self._wave_timer.stop()

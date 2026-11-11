@@ -402,10 +402,27 @@ class TestRecordingStylePicker:
             window._style_picker._tick()
             window._style_picker._tick()
 
-    def test_previews_show_a_level_that_changes(self, qapp, window):
-        picker = window._style_picker
-        levels = set()
-        for _ in range(12):
-            picker._tick()
-            levels.add(round(picker._preview_for("orb").level, 3))
-        assert len(levels) > 1, "the previews are frozen"
+    def test_a_tick_repaints_the_thumbnails(self, qapp, window):
+        """The level moving is not the same as the picture moving. The display
+        is a hidden child widget, so an update() on it is dropped: unless the
+        tile itself is repainted the user watches one frozen frame."""
+        from src.ui_pyqt6.ios_layout import _StyleTile
+        painted = []
+        original = _StyleTile.paintEvent
+
+        def counting_paint(tile_self, event):
+            painted.append(tile_self.style_id)
+            return original(tile_self, event)
+
+        window.show()
+        qapp.processEvents()
+        _StyleTile.paintEvent = counting_paint
+        try:
+            painted.clear()
+            for _ in range(4):
+                window._style_picker._tick()
+                qapp.processEvents()
+        finally:
+            _StyleTile.paintEvent = original
+
+        assert painted, "a preview tick never repainted a thumbnail"
