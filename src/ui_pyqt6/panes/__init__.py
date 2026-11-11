@@ -83,7 +83,7 @@ _REGISTRY: dict[str, str | None] = {
     "microphone": "microphone:MicrophonePane",
     "shortcuts": "shortcuts:ShortcutsPane",
     "appearance": "appearance:AppearancePane",
-    "history": None,
+    "history": "history:HistoryPane",
     "stats": None,
     "general": "general:GeneralPane",
     "about": "about:AboutPane",
