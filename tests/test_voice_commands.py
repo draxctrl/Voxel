@@ -17,7 +17,7 @@ from src.voice_commands import VoiceCommandProcessor
 def processor():
     commands = {
         "sign off": "Best regards,\nDrax",
-        "my email": "isuru.nuwan007@gmail.com",
+        "my email": "you@example.com",
         "today": "Today is {{date}}",
         "right now": "It is {{time}}",
         "full stamp": "{{datetime}}",
@@ -36,7 +36,7 @@ class TestMatch:
     def test_case_insensitive(self, processor):
         assert processor.match("Sign Off") == "Best regards,\nDrax"
         assert processor.match("SIGN OFF") == "Best regards,\nDrax"
-        assert processor.match("My Email") == "isuru.nuwan007@gmail.com"
+        assert processor.match("My Email") == "you@example.com"
 
     def test_strip_trailing_punctuation(self, processor):
         """Whisper frequently appends a period to short phrases."""
