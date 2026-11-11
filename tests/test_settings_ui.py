@@ -426,3 +426,28 @@ class TestRecordingStylePicker:
             _StyleTile.paintEvent = original
 
         assert painted, "a preview tick never repainted a thumbnail"
+
+
+class TestTogglingOfflineDoesNotShiftThePage:
+    """The Dictation Mode subtitle is rewritten when Offline mode is switched
+    on. If the replacement wraps onto a second line the row grows and every
+    row below it jumps down the page."""
+
+    def test_the_row_keeps_its_height_when_offline_is_switched_on(self, window, qapp):
+        window.resize(560, 820)
+        window.show()
+        qapp.processEvents()
+        row = window._profile_sub.parentWidget()
+
+        window._offline_check.setChecked(False)
+        qapp.processEvents()
+        before = row.sizeHint().height()
+
+        window._offline_check.setChecked(True)
+        qapp.processEvents()
+        after = row.sizeHint().height()
+
+        assert after == before, (
+            f"the Dictation Mode row grew from {before}px to {after}px, pushing "
+            "everything below it down the page"
+        )

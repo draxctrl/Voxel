@@ -108,8 +108,10 @@ class TestBuildQss:
     def test_horizontal_scrollbar_is_styled_too(self):
         assert "QScrollBar:horizontal" in build_qss(DARK)
 
-    def test_combo_popup_is_styled(self):
-        assert "QComboBox QAbstractItemView" in build_qss(DARK)
+    def test_the_popup_is_not_styled_here_as_well(self):
+        """ArrowComboBox owns the dropdown panel and its rows. A second
+        definition in the shared sheet is one that drifts."""
+        assert "QComboBox QAbstractItemView" not in build_qss(DARK)
 
     def test_font_stack_falls_back_to_segoe(self):
         """If Inter fails to load, text must still render in the system face."""
@@ -329,6 +331,11 @@ class TestTheSwitchHasNoNativeIndicator:
     # visual proof is a real-platform render.
 
 
+def Qt_transparent():
+    from PyQt6.QtCore import Qt
+    return Qt.GlobalColor.transparent
+
+
 class TestTheDropdownOpensFromItsField:
     """Style A: the list is the field growing downward — same width, flush
     against its bottom edge, and it never spills outside the window."""
@@ -362,9 +369,37 @@ class TestTheDropdownOpensFromItsField:
             Qt.WidgetAttribute.WA_TranslucentBackground
         ), "the popup window is opaque, so a border-radius leaves black corners"
 
-    def test_the_list_is_joined_to_the_bottom_of_the_field(self):
-        from src.ui_pyqt6.theme import build_qss, DARK
-        block = build_qss(DARK).split("QComboBox QAbstractItemView {")[1].split("}")[0]
-        assert "border-top: none" in block
-        assert "border-top-left-radius: 0px" in block
-        assert "border-bottom-left-radius: 10px" in block
+    def test_the_panel_is_painted_by_hand_not_by_the_stylesheet(self, qapp):
+        """Qt's stylesheet renderer gives a popup one clean corner and one
+        five-pixel stair, so the panel is drawn with an antialiased path."""
+        from PyQt6.QtGui import QPixmap
+        combo = self._combo()
+        popup = combo.view().window()
+        popup.resize(200, 80)
+        pm = QPixmap(popup.size())
+        pm.fill(Qt_transparent())
+        combo.paint_panel(pm)
+        img = pm.toImage()
+        # Opposite bottom corners must be the same shape: count how far in
+        # the fill starts on the last row of the curve.
+        def inset_from(edge_x_range, y):
+            for n, x in enumerate(edge_x_range):
+                if img.pixelColor(x, y).alpha() > 128:
+                    return n
+            return -1
+        y = popup.height() - 2
+        left = inset_from(range(0, 40), y)
+        right = inset_from(range(popup.width() - 1, popup.width() - 41, -1), y)
+        assert left == right, (
+            f"the bottom corners differ: {left}px of curve on the left, "
+            f"{right}px on the right"
+        )
+        assert left > 2, "the corners are not rounded at all"
+
+    def test_the_list_itself_paints_nothing(self, qapp):
+        """Anything the list paints sits on top of the panel as a hard-edged
+        rectangle and squares off the corners."""
+        combo = self._combo()
+        qss = combo.popup_qss()
+        assert "background: transparent" in qss
+        assert "QAbstractItemView::viewport { background: transparent; }" in qss

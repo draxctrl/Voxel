@@ -3,8 +3,8 @@ theme.py - Shared UI theme constants, stylesheet, and reusable widgets for Voxel
 """
 import logging
 
-from PyQt6.QtCore import Qt, QPoint
-from PyQt6.QtGui import QPainter, QPen, QColor
+from PyQt6.QtCore import Qt, QPoint, QObject, QEvent, QRectF
+from PyQt6.QtGui import QPainter, QPen, QColor, QPainterPath
 from PyQt6.QtWidgets import QComboBox, QCheckBox, QWidget
 
 logger = logging.getLogger(__name__)
@@ -271,35 +271,10 @@ QComboBox::down-arrow {{
     height: 0px;
 }}
 
-/* The list is the field opening downward, not a box floating near it: same
-   width, flush against the field's bottom edge, square where they meet and
-   rounded where the field would have been. */
-QComboBox QAbstractItemView {{
-    background-color: {p['input_bg']};
-    color: {p['text']};
-    border: 1px solid {p['separator']};
-    border-top: none;
-    border-top-left-radius: 0px;
-    border-top-right-radius: 0px;
-    border-bottom-left-radius: 10px;
-    border-bottom-right-radius: 10px;
-    selection-background-color: {p['accent']};
-    selection-color: #FFFFFF;
-    outline: none;
-    padding: 2px 0px 4px 0px;
-}}
-
-QComboBox QAbstractItemView::item {{
-    padding: 8px 11px;
-    min-height: 24px;
-    border: none;
-}}
-
-QComboBox QAbstractItemView::item:hover,
-QComboBox QAbstractItemView::item:selected {{
-    background-color: {p['accent']};
-    color: #FFFFFF;
-}}
+/* The dropdown panel and its rows are drawn by ArrowComboBox, which owns
+   every combo in Voxel: the panel by hand (Qt's stylesheet renderer rounds
+   a popup's corners unevenly) and the rows from ArrowComboBox.popup_qss().
+   Nothing is styled here, so there is no second definition to drift. */
 
 QPushButton {{
     background-color: {p['accent']};
@@ -524,22 +499,57 @@ def apply_theme(app, theme_name: str | None = None) -> str:
 # ---------------------------------------------------------------------------
 # Reusable widgets
 # ---------------------------------------------------------------------------
-class ArrowComboBox(QComboBox):
-    """A combo whose list opens *from* the field rather than beside it.
+class _PanelPainter(QObject):
+    """Draws the dropdown panel in place of the container's own painting.
 
-    The list is exactly as wide as the field and sits flush against its
-    bottom edge, so the two read as one control and the popup can never hang
-    outside the window. Items wider than the field are elided by the view and
-    carry their full text as a tooltip, so no device name is lost.
+    Qt's stylesheet renderer rounds a popup's corners unevenly — one corner
+    comes out a clean arc and the opposite one a five-pixel stair. Taking the
+    container's paint event and drawing the panel with an antialiased path is
+    the only way to get four corners that match.
     """
+
+    def __init__(self, combo: "ArrowComboBox") -> None:
+        super().__init__(combo)
+        self._combo = combo
+
+    def eventFilter(self, obj, event):  # noqa: N802
+        if event.type() == QEvent.Type.Paint:
+            self._combo.paint_panel(obj)
+            # Consuming the container's own paint event only skips its
+            # background; the list inside paints in its own event.
+            return True
+        return False
+
+
+class ArrowComboBox(QComboBox):
+    """A combo whose list belongs to its field.
+
+    The list is exactly as wide as the field, so it can never hang outside the
+    window, and names too long for it are right-elided with the full name on
+    hover. How the panel sits relative to the field is one of three styles,
+    set by :attr:`POPUP_STYLE`:
+
+    ``joined``    flush under the field, square where they meet, rounded below
+    ``floating``  a raised card a few pixels below, rounded all round
+    ``overlay``   covers the field, iOS-picker style, rounded all round
+
+    The panel is drawn by :meth:`paint_panel` onto the popup's container
+    window, which is translucent. Everything Qt would otherwise paint there —
+    the container's background and the list's — is turned off, so there is
+    exactly one rounded shape on screen and nothing square behind it.
+    """
+
+    #: ``joined`` | ``floating`` | ``overlay``
+    POPUP_STYLE = "floating"
+    #: Corner radius of the panel, in pixels.
+    POPUP_RADIUS = 12
+    #: Space between the field and a floating panel.
+    POPUP_GAP = 6
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        # The popup lives in its own top-level window. Unless that window is
-        # transparent, the rounded corners in the stylesheet are drawn inside
-        # an opaque black square — which is exactly what made the old dropdown
-        # look like a separate floating box. This must be set before the popup
-        # is shown for the first time.
+        # The container is a top-level window; it has to be transparent before
+        # it is ever shown or the panel sits inside an opaque square.
         popup = self.view().window()
         popup.setWindowFlags(
             popup.windowFlags()
@@ -547,16 +557,91 @@ class ArrowComboBox(QComboBox):
             | Qt.WindowType.NoDropShadowWindowHint
         )
         popup.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        # Scoped to the container by name. An unscoped rule here cascades into
-        # the list inside it and makes the list transparent too, so the card
-        # behind shows through the dropdown.
         popup.setObjectName("combo_popup")
-        popup.setStyleSheet(
-            "QFrame#combo_popup { background: transparent; border: none; }"
-        )
+        self._panel_painter = _PanelPainter(self)
+        popup.installEventFilter(self._panel_painter)
         # Right-elide, so a name is cut at its end rather than through its
         # middle; the full name is on the tooltip.
         self.view().setTextElideMode(Qt.TextElideMode.ElideRight)
+
+    # -- the panel ------------------------------------------------------
+    def _panel_colours(self) -> tuple[QColor, QColor]:
+        p = current_palette()
+        dark = p["card"] == DARK["card"]
+        if self.POPUP_STYLE == "joined":
+            fill = p["input_bg"]
+        else:
+            fill = "#2C2C2E" if dark else "#FFFFFF"
+        return QColor(fill), QColor(p["separator"])
+
+    def _panel_path(self, rect: QRectF) -> QPainterPath:
+        r = float(self.POPUP_RADIUS)
+        path = QPainterPath()
+        if self.POPUP_STYLE != "joined":
+            path.addRoundedRect(rect, r, r)
+            return path
+        # Joined: square where it meets the field, rounded below.
+        path.moveTo(rect.left(), rect.top())
+        path.lineTo(rect.right(), rect.top())
+        path.lineTo(rect.right(), rect.bottom() - r)
+        path.quadTo(rect.right(), rect.bottom(), rect.right() - r, rect.bottom())
+        path.lineTo(rect.left() + r, rect.bottom())
+        path.quadTo(rect.left(), rect.bottom(), rect.left(), rect.bottom() - r)
+        path.closeSubpath()
+        return path
+
+    def paint_panel(self, frame) -> None:
+        """Paint the panel onto the popup's container window."""
+        fill, border = self._panel_colours()
+        painter = QPainter(frame)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        # Half-pixel inset so the 1px stroke lands inside the widget rather
+        # than straddling its edge, where half of it would be clipped away.
+        rect = QRectF(frame.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+        path = self._panel_path(rect)
+        painter.fillPath(path, fill)
+        painter.strokePath(path, QPen(border, 1))
+        painter.end()
+
+    def popup_qss(self) -> str:
+        """Styling for the list on top of the panel: rows only, no background.
+
+        Read at open time rather than at construction, so a switch between
+        light and dark reaches dropdowns that already exist.
+        """
+        p = current_palette()
+        inset = 4 if self.POPUP_STYLE == "joined" else 6
+        radius = 0 if self.POPUP_STYLE == "joined" else 8
+        top_pad = 2 if self.POPUP_STYLE == "joined" else 5
+        return f"""
+        QAbstractItemView {{
+            background: transparent;
+            border: none;
+            outline: none;
+            padding: {top_pad}px 0px {max(top_pad, 5)}px 0px;
+        }}
+        QAbstractItemView::viewport {{ background: transparent; }}
+        QAbstractItemView::item {{
+            padding: 8px 10px;
+            margin: 0px {inset}px;
+            min-height: 24px;
+            border: none;
+            border-radius: {radius}px;
+            color: {p['text']};
+        }}
+        QAbstractItemView::item:selected, QAbstractItemView::item:hover {{
+            background-color: {p['accent']};
+            color: #FFFFFF;
+        }}
+        """
+
+    def _popup_offset(self) -> int:
+        """Where the panel's top edge goes, relative to the field's top."""
+        if self.POPUP_STYLE == "joined":
+            return self.height()
+        if self.POPUP_STYLE == "floating":
+            return self.height() + self.POPUP_GAP
+        return 0   # overlay: the panel covers the field
 
     def wheelEvent(self, event):  # noqa: N802
         """Scroll the page, never retune the setting under the pointer.
@@ -580,14 +665,15 @@ class ArrowComboBox(QComboBox):
         for i in range(self.count()):
             if not self.itemData(i, Qt.ItemDataRole.ToolTipRole):
                 self.setItemData(i, self.itemText(i), Qt.ItemDataRole.ToolTipRole)
+
+        popup = view.window()
+        view.setStyleSheet(self.popup_qss())
         super().showPopup()
         # Clamping the list is not enough: Qt sizes the popup's own top-level
         # window from the widest item, so a long device name leaves an 800px
-        # window hanging outside the app. Resize the window too, then pin it
-        # to the field's bottom edge so the two read as one control.
-        popup = view.window()
+        # window hanging outside the app.
         popup.resize(self.width(), popup.height())
-        popup.move(self.mapToGlobal(QPoint(0, self.height())))
+        popup.move(self.mapToGlobal(QPoint(0, self._popup_offset())))
 
     def paintEvent(self, event):
         # A fixed-width combo in a settings row is narrower than a long device

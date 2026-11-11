@@ -54,7 +54,10 @@ logger = logging.getLogger(__name__)
 
 # Dictation Mode subtitle, and what it says when Offline mode makes it inert.
 _MODE_SUBTITLE = "How your speech is cleaned up"
-_MODE_SUBTITLE_OFFLINE = "Not used in Offline mode — transcription only"
+#: Kept short enough to sit on one line beside the control. A subtitle
+#: that wraps where the other does not grows the row and shifts every
+#: row below it down the page the moment Offline mode is switched on.
+_MODE_SUBTITLE_OFFLINE = "Not used in Offline mode"
 
 
 def _is_modifier_only_hotkey(hotkey: str) -> bool:
