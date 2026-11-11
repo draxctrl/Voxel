@@ -29,3 +29,35 @@ def qapp():
     # smaller face than the shipped window uses.
     apply_theme(app, "dark")
     yield app
+
+
+@pytest.fixture
+def ctx(qapp, tmp_path):
+    """A PaneContext over throwaway storage.
+
+    `apply` records rather than acting, so a pane test can assert what the
+    pane asked the app to change without starting the app.
+    """
+    from src.config import Config
+    from src.history import HistoryStore
+    from src.profiles import ProfileManager
+    from src.ui_pyqt6.panes import PaneContext
+    from src.ui_pyqt6.theme import current_palette
+
+    config = Config(config_path=str(tmp_path / "config.json"))
+    config.load()
+    applied: list[tuple[str, object]] = []
+
+    def apply(key, value):
+        applied.append((key, value))
+        config.set(key, value)
+
+    context = PaneContext(
+        config=config,
+        profiles=ProfileManager(config),
+        history=HistoryStore(db_path=str(tmp_path / "history.db")),
+        apply=apply,
+        palette=current_palette,
+    )
+    context.applied = applied
+    return context
