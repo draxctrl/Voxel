@@ -159,3 +159,21 @@ class TestTheFooterFitsTheRail:
         assert label.wordWrap() or needed <= label.width(), (
             "the shortcut is wider than the footer label and will be clipped"
         )
+
+
+class TestTheRailCarriesTheAppMark:
+    def test_the_logo_sits_beside_the_name(self, qapp):
+        rail = NavRail()
+        assert rail.logo_is_shown() is True
+
+    def test_the_name_is_still_there(self, qapp):
+        rail = NavRail()
+        assert rail._brand.text() == "Voxel"
+
+    def test_a_missing_logo_file_costs_the_picture_not_the_window(self, qapp, monkeypatch):
+        from src.ui_pyqt6 import nav_rail as rail_mod
+
+        monkeypatch.setattr(rail_mod, "_logo_path", lambda: None)
+        rail = NavRail()
+        assert rail.logo_is_shown() is False
+        assert rail._brand.text() == "Voxel"

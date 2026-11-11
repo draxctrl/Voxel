@@ -12,7 +12,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout
 
 from . import Pane, PaneContext
-from .widgets import PaneHeader, pane_body
+from .widgets import pane_surface_qss, repaint_with, PaneHeader, pane_body
 
 logger = logging.getLogger(__name__)
 
@@ -138,13 +138,10 @@ class StatsPane(Pane):
     def restyle(self, palette: dict) -> None:
         self._palette = dict(palette)
         p = self._palette
-        self.setStyleSheet(
-            "QWidget#pane_inner, QScrollArea#pane_scroll {{"
-            " background-color: {pane}; }}".format(**p)
-        )
+        repaint_with(self, pane_surface_qss(p))
         self._header.restyle(p)
         self._footnote.setStyleSheet(
-            "color: {faint}; font-size: 11.5px; background: transparent;".format(**p)
+            "color: {faint}; font-size: 12px; background: transparent;".format(**p)
         )
         for figure in self._figures.values():
             figure.restyle(p)

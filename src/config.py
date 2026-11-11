@@ -39,8 +39,6 @@ DEFAULT_CONFIG = {
     "clipboard_notice": True,
     # "system" follows the Windows light/dark setting; "light"/"dark" pin it.
     "theme": "system",
-    # Empty means no undo shortcut is set.
-    "undo_hotkey": "",
 }
 
 

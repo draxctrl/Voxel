@@ -13,11 +13,11 @@ class TestTheShortcutsAreShownAsWords:
         pane.refresh()
         assert pane.hotkey_text() == "Ctrl + Shift + Space"
 
-    def test_an_unset_undo_hotkey_reads_as_not_set(self, qapp, ctx):
-        ctx.config.set("undo_hotkey", "")
-        pane = ShortcutsPane(ctx)
-        pane.refresh()
-        assert pane.undo_hotkey_text().lower().startswith("not set")
+    def test_there_is_no_undo_shortcut_row(self, qapp, ctx):
+        """Undo sent a blind Ctrl+Z to whatever had focus and was removed
+        from Voxel. Offering to set a shortcut for it would promise a
+        feature that is not there."""
+        assert not hasattr(ShortcutsPane(ctx), "_undo_row")
 
 
 class TestTheActivationMode:
@@ -96,15 +96,7 @@ class TestSettingAHotkey:
         pane.set_hotkey("")
         assert ctx.applied == []
 
-    def test_the_undo_hotkey_is_applied_separately(self, qapp, ctx):
-        pane = ShortcutsPane(ctx)
-        pane.refresh()
-        pane.set_undo_hotkey("<ctrl>+<alt>+z")
-        assert ("undo_hotkey", "<ctrl>+<alt>+z") in ctx.applied
-
 
 class TestThePaneDeclaresWhatItOwns:
     def test_it_owns_the_three_shortcut_keys(self):
-        assert ShortcutsPane.OWNS == frozenset(
-            {"hotkey", "undo_hotkey", "activation_mode"}
-        )
+        assert ShortcutsPane.OWNS == frozenset({"hotkey", "activation_mode"})

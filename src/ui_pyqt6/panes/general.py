@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
 )
 
 from . import Pane, PaneContext
-from .widgets import PaneHeader, SwitchRow, link_markup, pane_body
+from .widgets import pane_surface_qss, repaint_with, PaneHeader, SwitchRow, link_markup, pane_body
 
 logger = logging.getLogger(__name__)
 
@@ -161,17 +161,14 @@ class GeneralPane(Pane):
     def restyle(self, palette: dict) -> None:
         self._palette = dict(palette)
         p = self._palette
-        self.setStyleSheet(
-            "QWidget#pane_inner, QScrollArea#pane_scroll {{"
-            " background-color: {pane}; }}".format(**p)
-        )
+        repaint_with(self, pane_surface_qss(p))
         self._header.restyle(p)
         self._key_card.setStyleSheet(
             "QFrame#setting_row {{ background-color: {row};"
             " border: 1px solid {row_border}; border-radius: 9px; }}".format(**p)
         )
         self._key_label.setStyleSheet(
-            "color: {text}; font-size: 13.5px; font-weight: 600;"
+            "color: {text}; font-size: 14px; font-weight: 600;"
             " background: transparent;".format(**p)
         )
         for label in (self._key_help, self._key_status):
@@ -182,12 +179,12 @@ class GeneralPane(Pane):
             link_markup("Get a free key from Groq", GROQ_CONSOLE_URL, p["accent"])
         )
         self._get_key_link.setStyleSheet(
-            "font-size: 12.5px; background: transparent;"
+            "font-size: 13px; background: transparent;"
         )
         self._key_field.setStyleSheet(
             "QLineEdit {{ color: {text}; background-color: {card_alt};"
             " border: 1px solid {row_border}; border-radius: 7px;"
-            " padding: 4px 10px; font-size: 12.5px; }}"
+            " padding: 4px 10px; font-size: 13px; }}"
             "QLineEdit:focus {{ border-color: {accent}; }}".format(**p)
         )
         button_qss = (

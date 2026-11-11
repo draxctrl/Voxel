@@ -1,4 +1,4 @@
-"""Shortcuts: the key you hold to talk, the undo key, and how it behaves."""
+"""Shortcuts: the keys you hold to talk, and how holding them behaves."""
 from __future__ import annotations
 
 import logging
@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
 
 from ..keys import pretty_hotkey
 from . import Pane, PaneContext
-from .widgets import ChoiceRow, PaneHeader, pane_body
+from .widgets import pane_surface_qss, repaint_with, ChoiceRow, PaneHeader, pane_body
 
 logger = logging.getLogger(__name__)
 
@@ -79,14 +79,14 @@ class _ShortcutRow(QFrame):
             " border: 1px solid {row_border}; border-radius: 9px; }}".format(**p)
         )
         self._label.setStyleSheet(
-            "color: {text}; font-size: 13.5px; font-weight: 500;"
+            "color: {text}; font-size: 14px; font-weight: 500;"
             " background: transparent;".format(**p)
         )
         self._description.setStyleSheet(
             "color: {muted}; font-size: 12px; background: transparent;".format(**p)
         )
         self.value.setStyleSheet(
-            "color: {text}; font-size: 12.5px; font-weight: 600;"
+            "color: {text}; font-size: 13px; font-weight: 600;"
             " background: transparent;".format(**p)
         )
         self.button.setStyleSheet(
@@ -101,7 +101,10 @@ class ShortcutsPane(Pane):
     PANE_ID = "shortcuts"
     TITLE = "Shortcuts"
     SUBTITLE = "The keys that start and stop dictation."
-    OWNS = frozenset({"hotkey", "undo_hotkey", "activation_mode"})
+    # No undo shortcut: it sent a blind Ctrl+Z to whatever had focus and
+    # was removed from Voxel. A row for it would capture a combination
+    # nothing listens for.
+    OWNS = frozenset({"hotkey", "activation_mode"})
 
     MODE_IDS = MODE_IDS
 
@@ -126,12 +129,6 @@ class ShortcutsPane(Pane):
         )
         self._hotkey_row.button.clicked.connect(self._capture_hotkey)
         layout.addWidget(self._hotkey_row)
-
-        self._undo_row = _ShortcutRow(
-            "Undo last dictation", "Takes back what Voxel just typed"
-        )
-        self._undo_row.button.clicked.connect(self._capture_undo_hotkey)
-        layout.addWidget(self._undo_row)
 
         layout.addSpacing(10)
         self._mode_header = QLabel("How it activates")
@@ -162,9 +159,6 @@ class ShortcutsPane(Pane):
 
     def hotkey_text(self) -> str:
         return pretty_hotkey(self.ctx.config.get("hotkey", ""))
-
-    def undo_hotkey_text(self) -> str:
-        return pretty_hotkey(self.ctx.config.get("undo_hotkey", "")) or "Not set"
 
     def warning_text(self) -> str:
         return self._warning
@@ -205,12 +199,6 @@ class ShortcutsPane(Pane):
         self.ctx.apply("hotkey", hotkey)
         self.refresh()
 
-    def set_undo_hotkey(self, hotkey: str) -> None:
-        if not hotkey:
-            return
-        self.ctx.apply("undo_hotkey", hotkey)
-        self.refresh()
-
     def _set_warning(self, text: str) -> None:
         self._warning = text
         self._warning_label.setText(text)
@@ -220,9 +208,6 @@ class ShortcutsPane(Pane):
 
     def _capture_hotkey(self) -> None:
         self._capture(self.set_hotkey, self._hotkey_row)
-
-    def _capture_undo_hotkey(self) -> None:
-        self._capture(self.set_undo_hotkey, self._undo_row)
 
     def _capture(self, apply_to, row: _ShortcutRow) -> None:
         """Listen for one key combination and hand it to `apply_to`."""
@@ -241,20 +226,16 @@ class ShortcutsPane(Pane):
 
     def refresh(self) -> None:
         self._hotkey_row.value.setText(self.hotkey_text() or "Not set")
-        self._undo_row.value.setText(self.undo_hotkey_text())
         mode = self.selected_mode()
         for mode_id, row in self._mode_rows.items():
             row.set_selected(mode_id == mode)
 
     def restyle(self, palette: dict) -> None:
         self._palette = dict(palette)
-        self.setStyleSheet(
-            "QWidget#pane_inner, QScrollArea#pane_scroll {{"
-            " background-color: {pane}; }}".format(**self._palette)
-        )
+        repaint_with(self, pane_surface_qss(self._palette))
         self._header.restyle(self._palette)
         self._warning_label.setStyleSheet(
-            "color: {warning}; font-size: 12.5px; background: transparent;".format(
+            "color: {warning}; font-size: 13px; background: transparent;".format(
                 **self._palette
             )
         )
@@ -263,6 +244,5 @@ class ShortcutsPane(Pane):
             " letter-spacing: 0.8px; background: transparent;".format(**self._palette)
         )
         self._hotkey_row.restyle(self._palette)
-        self._undo_row.restyle(self._palette)
         for row in self._mode_rows.values():
             row.restyle(self._palette)

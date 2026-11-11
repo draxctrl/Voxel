@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import QHBoxLayout, QStackedWidget, QWidget
 from .keys import pretty_hotkey
 from .nav_rail import NavRail
 from .panes import Pane, PaneContext, all_panes
+from .panes.widgets import repaint_with
 from .theme import current_palette
 
 logger = logging.getLogger(__name__)
@@ -113,9 +114,10 @@ class SettingsWindow(QWidget):
         this project exists to kill, so the rail and every pane - not only
         the visible one - are done together."""
         self._palette = dict(palette)
-        self.setStyleSheet(
+        repaint_with(
+            self,
             "QWidget#settings_window, QStackedWidget#pane_stack {{"
-            " background-color: {pane}; }}".format(**self._palette)
+            " background-color: {pane}; }}".format(**self._palette),
         )
         self._rail.restyle(self._palette)
         for pane in self._panes.values():

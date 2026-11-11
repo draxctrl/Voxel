@@ -185,20 +185,43 @@ class TestFontLoading:
 class TestNoDuplicateTheme:
     """The spec's anti-goal: two stylesheet copies that drift apart."""
 
-    def test_settings_ui_has_no_private_theme_copy(self):
-        import src.ui_pyqt6.settings_ui as s
-        for name in ("_QSS", "_BG", "_CARD", "_ArrowComboBox", "_TickCheckBox"):
-            assert not hasattr(s, name), f"{name} duplicates theme.py"
+    def _ui_modules(self):
+        import importlib
+        import pkgutil
 
-    def test_no_window_defines_its_own_scrollbar_rules(self):
-        import inspect
-        import src.ui_pyqt6.history_window as h
-        import src.ui_pyqt6.stats_window as st
-        import src.ui_pyqt6.settings_ui as se
-        for mod in (h, st, se):
-            assert "QScrollBar" not in inspect.getsource(mod), (
-                f"{mod.__name__} styles scrollbars itself; theme.py owns that"
+        import src.ui_pyqt6.panes as panes_pkg
+
+        modules = [
+            importlib.import_module("src.ui_pyqt6.settings_window"),
+            importlib.import_module("src.ui_pyqt6.nav_rail"),
+        ]
+        for info in pkgutil.iter_modules(panes_pkg.__path__):
+            modules.append(
+                importlib.import_module("src.ui_pyqt6.panes." + info.name)
             )
+        return modules
+
+    def test_no_window_or_pane_defines_its_own_scrollbar_rules(self):
+        import inspect
+
+        for module in self._ui_modules():
+            assert "QScrollBar" not in inspect.getsource(module), (
+                f"{module.__name__} styles scrollbars itself; theme.py owns that"
+            )
+
+    def test_no_pane_hard_codes_a_palette_colour(self):
+        """A hex literal in a pane is a colour that will not follow the
+        theme. The accent placeholder in link markup is replaced on
+        restyle, and white on the accent button is white in both themes."""
+        import inspect
+        import re
+
+        allowed = {"#6366f1", "#ffffff", "#43b581", "#ff453a", "#ef4444"}
+        for module in self._ui_modules():
+            for found in re.findall(r"#[0-9a-fA-F]{6}", inspect.getsource(module)):
+                assert found.lower() in allowed, (
+                    f"{module.__name__} hard-codes {found}"
+                )
 
 
 class TestApplyTheme:
@@ -229,7 +252,9 @@ class TestApplyTheme:
 #: Colours that only ever belong to a dark UI. If one of these survives in a
 #: widget's own stylesheet after switching to light, that widget is stranded.
 _DARK_ONLY = (
-    "#16171a", "#1e1f23", "#2a2c32", "#32343b",   # dark palette
+    # Not "#16171a": that is also the LIGHT palette's rail_text_active, so
+    # it appears legitimately in a light stylesheet.
+    "#1e1f23", "#2a2c32", "#32343b",              # dark palette
     "#1C1C1E", "#2E2E31", "#39393D", "#48484A",   # previous dark palette
     "#1a1a1a", "#2a2a2a", "#0f0f0f", "#111111",   # legacy flat-dark palette
     "#e8e8e8", "#777777", "#333", "#1e1e3e",      # legacy literals
@@ -255,45 +280,54 @@ def _stranded_dark_styles(widget):
 
 
 class TestNoHalfThemedWindows:
-    """Review Focus 4: a theme change must restyle a window completely.
+    """Review Focus 3: a theme change must restyle a window completely.
 
-    Asserting on qapp.styleSheet() alone cannot fail for widgets carrying their
-    own inline styles — which is the entire failure mode.
+    Asserting on qapp.styleSheet() alone cannot fail for widgets carrying
+    their own inline styles - which is the entire failure mode.
     """
 
-    def _settings(self, tmp_path):
+    def _window(self, tmp_path):
         from src.config import Config
-        from src.ui_pyqt6.settings_ui import SettingsWindow
+        from src.history import HistoryStore
+        from src.profiles import ProfileManager
+        from src.ui_pyqt6.panes import PaneContext
+        from src.ui_pyqt6.settings_window import SettingsWindow
+
         cfg = Config(config_path=str(tmp_path / "c.json"))
         cfg.load()
-        return SettingsWindow(config=cfg, on_save=lambda: None,
-                              on_validate_key=lambda k: True, on_quit=lambda: None)
+        ctx = PaneContext(
+            config=cfg,
+            profiles=ProfileManager(cfg),
+            history=HistoryStore(db_path=str(tmp_path / "h.db")),
+            apply=lambda key, value: cfg.set(key, value),
+            palette=current_palette,
+        )
+        return SettingsWindow(ctx)
 
-    def _history_and_stats(self, tmp_path):
-        from src.history import HistoryStore
-        from src.ui_pyqt6.history_window import HistoryWindow
-        from src.ui_pyqt6.stats_window import StatsWindow
-        store = HistoryStore(db_path=str(tmp_path / "h.db"))
-        return HistoryWindow(store), StatsWindow(store)
-
-    def test_settings_has_no_stranded_dark_styles_in_light(self, qapp, tmp_path):
+    def test_the_window_has_no_stranded_dark_styles_in_light(self, qapp, tmp_path):
         apply_theme(qapp, "light")
-        stranded = _stranded_dark_styles(self._settings(tmp_path))
+        window = self._window(tmp_path)
+        window.restyle(LIGHT)
+        stranded = _stranded_dark_styles(window)
         assert stranded == [], f"stranded dark styles: {stranded}"
-
-    def test_history_and_stats_have_no_stranded_dark_styles_in_light(self, qapp, tmp_path):
-        apply_theme(qapp, "light")
-        history, stats = self._history_and_stats(tmp_path)
-        assert _stranded_dark_styles(history) == []
-        assert _stranded_dark_styles(stats) == []
 
     def test_switching_theme_restyles_an_already_built_window(self, qapp, tmp_path):
         """The real scenario: Voxel is running when Windows flips to light."""
         apply_theme(qapp, "dark")
-        window = self._settings(tmp_path)
+        window = self._window(tmp_path)
+        window.restyle(DARK)
         apply_theme(qapp, "light")
+        window.restyle(LIGHT)
         stranded = _stranded_dark_styles(window)
         assert stranded == [], f"stranded after switch: {stranded}"
+
+    def test_every_pane_is_restyled_not_only_the_visible_one(self, qapp, tmp_path):
+        apply_theme(qapp, "dark")
+        window = self._window(tmp_path)
+        window.restyle(LIGHT)
+        for pane in window.panes():
+            stranded = _stranded_dark_styles(pane)
+            assert stranded == [], f"{pane.PANE_ID} kept dark styles: {stranded}"
 
 
 class TestLegacyConstantsRemoved:
@@ -334,27 +368,29 @@ class TestSwitchesDoNotPaintTheirOwnBackground:
         from src.ui_pyqt6.theme import build_qss, LIGHT
         assert "QCheckBox {\n    background: transparent;" in build_qss(LIGHT)
 
-    def test_a_switch_on_a_card_leaves_the_card_showing(self, qapp):
-        """Rendered proof: the pixels around the pill must be card colour."""
-        from PyQt6.QtGui import QPixmap, QColor
-        from src.ui_pyqt6.theme import apply_theme, IOSSwitch, LIGHT
-        from src.ui_pyqt6.ios_layout import GroupCard, SettingsRow
+    def test_a_switch_on_a_row_leaves_the_row_showing(self, qapp):
+        """Rendered proof: the pixels around the pill must be row colour."""
+        from PyQt6.QtGui import QPixmap
+        from src.ui_pyqt6.panes.widgets import SwitchRow
+        from src.ui_pyqt6.theme import apply_theme, LIGHT
+
         apply_theme(qapp, "light")
-        card = GroupCard()
-        switch = IOSSwitch()
-        switch.setFixedWidth(IOSSwitch.TRACK_W + 4)
-        card.add_row(SettingsRow("Offline mode", control=switch))
-        card.resize(360, 44)
-        card.show()
-        pm = QPixmap(card.size())
-        card.render(pm)
+        row = SwitchRow("Work offline", "Slower, but nothing leaves this computer")
+        row.restyle(LIGHT)
+        row.resize(360, 52)
+        row.show()
+        qapp.processEvents()
+        pm = QPixmap(row.size())
+        row.render(pm)
         img = pm.toImage()
-        # The switch widget is a few pixels wider than the pill it draws. That
-        # sliver is where a window-coloured background shows up as a box.
-        sliver_x = switch.x() + switch.width() - 2
-        found = img.pixelColor(sliver_x, 22).name().lower()
-        assert found == LIGHT["card"].lower(), (
-            f"the switch painted {found} over its card at x={sliver_x}"
+        switch = row.switch()
+        # The switch widget is a few pixels wider than the pill it draws.
+        # That sliver is where a window-coloured background shows up as a box.
+        centre = switch.mapTo(row, switch.rect().center())
+        sliver_x = switch.mapTo(row, switch.rect().topRight()).x() - 2
+        found = img.pixelColor(sliver_x, centre.y()).name().lower()
+        assert found == LIGHT["row"].lower(), (
+            f"the switch painted {found} over its row at x={sliver_x}"
         )
 
 
@@ -448,3 +484,57 @@ class TestTheDropdownOpensFromItsField:
         qss = combo.popup_qss()
         assert "background: transparent" in qss
         assert "QAbstractItemView::viewport { background: transparent; }" in qss
+
+
+class TestTextIsDrawnOnWholePixels:
+    """Windows cannot draw half a pixel. A font-size like 13.5px is
+    rasterised between two pixel grids and every letter comes out soft,
+    which reads as a blurry, unfinished window."""
+
+    def _ui_sources(self):
+        import importlib
+        import inspect
+        import pkgutil
+
+        import src.ui_pyqt6.panes as panes_pkg
+
+        names = ["src.ui_pyqt6.settings_window", "src.ui_pyqt6.nav_rail",
+                 "src.ui_pyqt6.theme"]
+        for info in pkgutil.iter_modules(panes_pkg.__path__):
+            names.append("src.ui_pyqt6.panes." + info.name)
+        return [(n, inspect.getsource(importlib.import_module(n))) for n in names]
+
+    def test_no_stylesheet_asks_for_a_fractional_font_size(self):
+        import re
+
+        offenders = []
+        for name, source in self._ui_sources():
+            for found in re.findall(r"font-size:\s*([0-9]*\.[0-9]+)px", source):
+                offenders.append(f"{name}: {found}px")
+        assert offenders == [], f"fractional font sizes: {offenders}"
+
+    def test_the_shared_stylesheet_has_none_either(self):
+        import re
+
+        from src.ui_pyqt6.theme import build_qss, DARK
+
+        assert re.search(r"font-size:\s*[0-9]*\.[0-9]+px", build_qss(DARK)) is None
+
+
+class TestSmallTextIsSnappedToThePixelGrid:
+    """Qt's default hinting leaves 11-13px text soft on Windows: the stems
+    of the letters fall between pixels. Full hinting snaps them, which is
+    the difference between crisp and smudged at these sizes."""
+
+    def test_the_application_font_asks_for_full_hinting(self, qapp):
+        from PyQt6.QtGui import QFont
+
+        apply_theme(qapp, "dark")
+        assert (
+            qapp.font().hintingPreference()
+            == QFont.HintingPreference.PreferFullHinting
+        )
+
+    def test_the_application_font_is_the_bundled_one(self, qapp):
+        apply_theme(qapp, "dark")
+        assert qapp.font().family() == "Inter"

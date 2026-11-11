@@ -23,7 +23,7 @@ from PyQt6.QtWidgets import (
 
 from ..icons import icon as load_icon
 from . import Pane, PaneContext
-from .widgets import PaneHeader, pane_body
+from .widgets import pane_surface_qss, repaint_with, PaneHeader, pane_body
 
 logger = logging.getLogger(__name__)
 
@@ -112,10 +112,10 @@ class _EntryRow(QFrame):
             " border: 1px solid {row_border}; border-radius: 9px; }}".format(**p)
         )
         self._when.setStyleSheet(
-            "color: {faint}; font-size: 11.5px; background: transparent;".format(**p)
+            "color: {faint}; font-size: 12px; background: transparent;".format(**p)
         )
         self._text.setStyleSheet(
-            "color: {text}; font-size: 12.5px; background: transparent;".format(**p)
+            "color: {text}; font-size: 13px; background: transparent;".format(**p)
         )
         button_qss = (
             "QPushButton {{ background: transparent; border: none;"
@@ -299,18 +299,15 @@ class HistoryPane(Pane):
     def restyle(self, palette: dict) -> None:
         self._palette = dict(palette)
         p = self._palette
-        self.setStyleSheet(
-            "QWidget#pane_inner, QScrollArea#pane_scroll {{"
-            " background-color: {pane}; }}".format(**p)
-        )
+        repaint_with(self, pane_surface_qss(p))
         self._header.restyle(p)
         self._empty.setStyleSheet(
-            "color: {muted}; font-size: 12.5px; background: transparent;".format(**p)
+            "color: {muted}; font-size: 13px; background: transparent;".format(**p)
         )
         self._search_field.setStyleSheet(
             "QLineEdit {{ color: {text}; background-color: {card_alt};"
             " border: 1px solid {row_border}; border-radius: 7px;"
-            " padding: 4px 10px; font-size: 12.5px; }}"
+            " padding: 4px 10px; font-size: 13px; }}"
             "QLineEdit:focus {{ border-color: {accent}; }}".format(**p)
         )
         button_qss = (

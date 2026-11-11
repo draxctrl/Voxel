@@ -24,12 +24,11 @@ from src.profiles import ProfileManager, resolve_effective_profile
 from src.voice_commands import VoiceCommandProcessor
 from src.app_detector import AppDetector
 from src.ui_pyqt6.theme import load_fonts, apply_theme, current_palette
-from src.ui_pyqt6.settings_ui import SettingsWindow
 from src.ui_pyqt6.recording_overlay import RecordingOverlay
 from src.ui_pyqt6.recording_styles import DEFAULT_STYLE
 from src.ui_pyqt6.splash import SplashScreen
-from src.ui_pyqt6.history_window import HistoryWindow
-from src.ui_pyqt6.stats_window import StatsWindow
+from src.ui_pyqt6.settings_window import SettingsWindow
+from src.ui_pyqt6.panes import PaneContext
 
 MIN_AUDIO_DURATION = 0.5
 MAX_RECORDING_DURATION = 120
@@ -136,20 +135,13 @@ class VoxelApp:
         self._max_record_timer: threading.Timer | None = None
         self._running = True
 
-        # UI
-        self._settings_window = SettingsWindow(
-            config=self._config,
-            on_save=self._on_settings_saved,
-            on_validate_key=self._validate_api_key,
-            on_quit=self._quit,
-            on_history=self._show_history,
-            on_stats=self._show_stats,
-        )
-        self._history_window = HistoryWindow(self._history)
-        self._stats_window = StatsWindow(self._history)
+        # UI - one window with a sidebar. History and Statistics are panes
+        # in it, not windows of their own.
+        self._settings_window: SettingsWindow | None = None
+        self._build_settings_window()
         # The provider is a bound lambda rather than self._recorder.current_level,
-        # because _on_settings_saved replaces the recorder: a bound method would
-        # keep animating from the stream that was closed.
+        # because applying a microphone setting replaces the recorder: a bound
+        # method would keep animating from the stream that was closed.
         self._overlay = RecordingOverlay(
             style=self._config.get("recording_style", DEFAULT_STYLE),
             level_provider=self._overlay_level,
@@ -220,7 +212,7 @@ class VoxelApp:
 
         self._recorder.start()
         self._recording_start_time = time.time()
-        self._tray.set_state("recording")
+        self._set_state("recording")
         self._overlay.show_recording()
 
         self._max_record_timer = threading.Timer(MAX_RECORDING_DURATION, self._on_hotkey_release)
@@ -245,7 +237,7 @@ class VoxelApp:
             self._recorder.stop()
         except Exception as e:
             logger.debug("Could not stop the recorder on cancel: %s", e)
-        self._tray.set_state("idle")
+        self._set_state("idle")
         self._overlay.hide()
         logger.info("Recording cancelled")
 
@@ -264,12 +256,12 @@ class VoxelApp:
         audio_bytes = self._recorder.stop()
         duration = time.time() - self._recording_start_time
 
-        self._tray.set_state("processing")
+        self._set_state("processing")
         self._overlay.show_processing()
 
         if duration < MIN_AUDIO_DURATION or not audio_bytes or rms < SILENCE_RMS_THRESHOLD:
             logger.debug("Recording skipped (duration=%.1fs, rms=%.0f)", duration, rms)
-            self._tray.set_state("idle")
+            self._set_state("idle")
             self._overlay.hide()
             return
 
@@ -291,14 +283,14 @@ class VoxelApp:
             else:
                 if not self._transcriber or not self._cleaner:
                     logger.error("Groq client not initialized")
-                    self._tray.set_state("error")
+                    self._set_state("error")
                     self._overlay.hide()
                     return
                 raw_text = self._transcriber.transcribe(audio_bytes, language=language)
 
             if not raw_text or not raw_text.strip():
                 logger.info("Empty transcript, skipping")
-                self._tray.set_state("idle")
+                self._set_state("idle")
                 self._overlay.hide()
                 return
 
@@ -309,7 +301,7 @@ class VoxelApp:
                 result = self._injector.inject(expansion)
                 self._history.add(raw_text, expansion, language or "auto", duration, profile="voice_command")
                 self._overlay.hide()
-                self._tray.set_state("idle")
+                self._set_state("idle")
                 return
 
             # Per-app profile switching (using captured app from press time)
@@ -357,13 +349,13 @@ class VoxelApp:
             else:
                 self._overlay.hide()
 
-            self._tray.set_state("idle")
+            self._set_state("idle")
 
         except Exception as e:
             logger.error("Processing failed: %s", e, exc_info=True)
-            self._tray.set_state("error")
+            self._set_state("error")
             self._overlay.hide()
-            threading.Timer(3.0, lambda: self._tray.set_state("idle")).start()
+            threading.Timer(3.0, lambda: self._set_state("idle")).start()
 
     def _transcribe_offline(self, audio_bytes: bytes, language: str | None) -> str:
         """Transcribe using local Whisper model."""
@@ -445,10 +437,8 @@ class VoxelApp:
         except Exception as e:
             logger.debug("Could not set overlay mic text: %s", e)
 
-        try:
-            self._settings_window.show_warning(message)
-        except Exception as e:
-            logger.debug("Could not show mic warning in settings: %s", e)
+        # The Microphone pane says this for itself, reading the same config
+        # the recorder did, so there is nothing to push at the window here.
 
     def _resolve_profile(self, app_name: str | None) -> tuple[str, dict]:
         """Which dictation mode this utterance runs under."""
@@ -460,20 +450,53 @@ class VoxelApp:
             app_name=app_name,
         )
 
+    def _build_settings_window(self) -> None:
+        """Create the settings window over a context of its own.
+
+        `apply_setting` is the only route a pane has to the running app,
+        which is what lets the window have no Save button.
+        """
+        self._settings_window = SettingsWindow(
+            PaneContext(
+                config=self._config,
+                profiles=self._profiles,
+                history=self._history,
+                apply=self.apply_setting,
+                palette=current_palette,
+                recorder=self._recorder,
+            )
+        )
+
     def _show_settings(self) -> None:
-        self._settings_window.show()
+        self._open_window_on("writing_style")
 
     def _show_stats(self) -> None:
-        self._stats_window.refresh()
-        self._stats_window.show()
-        self._stats_window.raise_()
-        self._stats_window.activateWindow()
+        self._open_window_on("stats")
 
     def _show_history(self) -> None:
-        self._history_window.refresh()
-        self._history_window.show()
-        self._history_window.raise_()
-        self._history_window.activateWindow()
+        self._open_window_on("history")
+
+    def _open_window_on(self, pane_id: str) -> None:
+        """Bring the window up with one pane showing."""
+        if self._settings_window is None:
+            self._build_settings_window()
+        # The recorder is replaced whenever the microphone changes, so the
+        # context is pointed at the current one before the pane reads it.
+        self._settings_window.ctx.recorder = self._recorder
+        self._settings_window.show_pane(pane_id)
+        self._settings_window.show()
+
+    def _set_state(self, state: str) -> None:
+        """Tell both the tray and the window what Voxel is doing."""
+        self._tray.set_state(state)
+        # getattr, not an attribute read: recording can be driven before the
+        # window exists, and the tray must still be told either way.
+        window = getattr(self, "_settings_window", None)
+        if window is not None:
+            try:
+                window.set_status(state)
+            except Exception as e:
+                logger.debug("Could not update the sidebar status: %s", e)
 
     # ------------------------------------------------------------------
     # Instant apply
@@ -486,7 +509,7 @@ class VoxelApp:
     #: Settings that need the audio stream reopened.
     _MIC_KEYS = frozenset({"mic_device_name", "mic_device"})
     #: Settings the global hotkey listener is built from.
-    _HOTKEY_KEYS = frozenset({"hotkey", "undo_hotkey", "activation_mode"})
+    _HOTKEY_KEYS = frozenset({"hotkey", "activation_mode"})
     #: Settings the text injector is built from.
     _INJECTOR_KEYS = frozenset({"mute_sound", "always_copy"})
     #: Settings that change which model or key the cleaner talks to.
@@ -554,47 +577,6 @@ class VoxelApp:
         choice = self._config.get("theme", "system")
         return None if choice in (None, "", "system") else choice
 
-    def _on_settings_saved(self) -> None:
-        logger.info("Settings saved, reinitializing")
-        self._config.load()
-        self._init_groq()
-        self._start_hotkey_listener()
-
-        # Reinitialize injector
-        assets_dir = _get_assets_dir()
-        chime_path = os.path.join(assets_dir, "chime.wav")
-        if self._config.get("mute_sound", False) or not os.path.exists(chime_path):
-            chime_path = None
-        self._injector = TextInjector(
-            chime_path=chime_path,
-            always_copy=self._config.get("always_copy", False),
-        )
-
-        # Reinitialize recorder (close old stream first)
-        try:
-            self._recorder.close()
-        except Exception:
-            pass
-        self._recorder = MicRecorder(
-            device_name=self._config.get("mic_device_name", None),
-            device_index=self._config.get("mic_device", None),
-        )
-        self._report_mic_fallback()
-
-        # The chosen recording display may have changed.
-        try:
-            self._overlay.set_style(self._config.get("recording_style", DEFAULT_STYLE))
-        except Exception as e:
-            logger.warning("Could not switch recording display: %s", e)
-
-        # Reload voice commands
-        self._voice_commands.reload(self._config.get("voice_commands", {}))
-
-        # Reload profile prompt
-        prompt = self._profiles.get_active_prompt()
-        if self._cleaner:
-            self._cleaner.set_prompt(prompt)
-
     def _validate_api_key(self, key: str) -> bool:
         try:
             client = Groq(api_key=key)
@@ -615,7 +597,6 @@ class VoxelApp:
             self._hotkey_listener.stop()
 
         self._tray.stop()
-        self._settings_window._quitting = True
         self._qapp.quit()
 
     def run(self) -> None:
@@ -653,10 +634,20 @@ class VoxelApp:
 
     def _finish_and_show_taskbar(self) -> None:
         self._splash.close_splash()
-        self._settings_window.show()
+        self._show_settings()
 
     def _startup_finish_no_key(self) -> None:
+        """No API key yet: open on the pane that holds it.
+
+        This is the whole of first-run behaviour for now - the same place
+        the old window left a new user, in a window they can read.
+        """
         self._splash.close_splash()
+        # Choose the pane now and only delay the show, so what the user
+        # lands on does not depend on a timer having fired.
+        if self._settings_window is None:
+            self._build_settings_window()
+        self._settings_window.show_pane("general")
         QTimer.singleShot(100, self._settings_window.show)
 
 

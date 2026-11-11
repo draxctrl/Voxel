@@ -103,3 +103,38 @@ class TestThePaneRegistry:
     def test_all_panes_lists_a_class_per_rail_entry(self):
         from src.ui_pyqt6.panes import all_panes
         assert {p.PANE_ID for p in all_panes()} == set(ALL_PANE_IDS)
+
+
+class TestARestyleIsActuallyRepainted:
+    """A plain QWidget takes its background from the palette Qt computes
+    when the stylesheet is first applied. Setting a new stylesheet later
+    updates the text of the rule but not the painted pixels until the
+    widget is re-polished - so the rows change colour and the rail does
+    not, which is a half-light window with correct stylesheets."""
+
+    def _pixel(self, qapp, window, x, y):
+        from PyQt6.QtGui import QPixmap
+
+        qapp.processEvents()
+        pixmap = QPixmap(window.size())
+        window.render(pixmap)
+        return pixmap.toImage().pixelColor(x, y).name().lower()
+
+    def test_the_rail_repaints_when_the_palette_changes(self, qapp, ctx):
+        win = SettingsWindow(ctx)
+        win.restyle(palette_for("dark"))
+        win.resize(980, 620)
+        win.show()
+        assert self._pixel(qapp, win, 170, 600) == palette_for("dark")["rail"].lower()
+        win.restyle(palette_for("light"))
+        assert self._pixel(qapp, win, 170, 600) == palette_for("light")["rail"].lower()
+
+    def test_the_pane_surface_repaints_when_the_palette_changes(self, qapp, ctx):
+        win = SettingsWindow(ctx)
+        win.restyle(palette_for("dark"))
+        win.resize(980, 620)
+        win.show()
+        win.show_pane("about")
+        assert self._pixel(qapp, win, 900, 580) == palette_for("dark")["pane"].lower()
+        win.restyle(palette_for("light"))
+        assert self._pixel(qapp, win, 900, 580) == palette_for("light")["pane"].lower()

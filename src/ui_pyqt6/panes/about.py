@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import QFrame, QLabel, QVBoxLayout
 from src.version import APP_VERSION
 
 from . import Pane, PaneContext
-from .widgets import PaneHeader, link_markup, pane_body
+from .widgets import pane_surface_qss, repaint_with, PaneHeader, link_markup, pane_body
 
 LINKS = {
     "Project page on GitHub": "https://github.com/draxctrl/Voxel",
@@ -72,17 +72,14 @@ class AboutPane(Pane):
     def restyle(self, palette: dict) -> None:
         self._palette = dict(palette)
         p = self._palette
-        self.setStyleSheet(
-            "QWidget#pane_inner, QScrollArea#pane_scroll {{"
-            " background-color: {pane}; }}".format(**p)
-        )
+        repaint_with(self, pane_surface_qss(p))
         self._header.restyle(p)
         self._card.setStyleSheet(
             "QFrame#setting_row {{ background-color: {row};"
             " border: 1px solid {row_border}; border-radius: 9px; }}".format(**p)
         )
         self._version.setStyleSheet(
-            "color: {text}; font-size: 13.5px; font-weight: 600;"
+            "color: {text}; font-size: 14px; font-weight: 600;"
             " background: transparent;".format(**p)
         )
         self._licence.setStyleSheet(
@@ -97,5 +94,5 @@ class AboutPane(Pane):
                 )
             )
             label.setStyleSheet(
-                "font-size: 12.5px; background: transparent;"
+                "font-size: 13px; background: transparent;"
             )

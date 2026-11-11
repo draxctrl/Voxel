@@ -9,7 +9,7 @@ from __future__ import annotations
 from PyQt6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from . import Pane, PaneContext
-from .widgets import ChoiceRow, LinkLabel, PaneHeader, SwitchRow, pane_body
+from .widgets import pane_surface_qss, repaint_with, ChoiceRow, LinkLabel, PaneHeader, SwitchRow, pane_body
 
 #: The three on the pane itself, in this order.
 HEADLINE_IDS = ("grammar_only", "grammar_tidy", "raw")
@@ -152,12 +152,17 @@ class WritingStylePane(Pane):
                 continue
             row = self._rows.pop(style_id)
             self._more_layout.removeWidget(row)
+            # Detach before deleting: removeWidget takes it out of the
+            # layout but leaves it a child, so it survives until the event
+            # loop runs - still painted, still carrying the old theme.
+            row.setParent(None)
             row.deleteLater()
 
         while self._more_layout.count():
             item = self._more_layout.takeAt(0)
             widget = item.widget()
-            if widget is not None and not isinstance(widget, ChoiceRow):
+            if widget is not None:
+                widget.setParent(None)
                 widget.deleteLater()
 
         profiles = self.ctx.profiles.list_profiles()
@@ -183,10 +188,7 @@ class WritingStylePane(Pane):
 
     def restyle(self, palette: dict) -> None:
         self._palette = dict(palette)
-        self.setStyleSheet(
-            "QWidget#pane_inner, QScrollArea#pane_scroll {{"
-            " background-color: {pane}; }}".format(**self._palette)
-        )
+        repaint_with(self, pane_surface_qss(self._palette))
         self._header.restyle(self._palette)
         self._more_link.restyle(self._palette)
         self._offline.restyle(self._palette)

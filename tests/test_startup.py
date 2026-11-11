@@ -101,17 +101,27 @@ class TestStartupChain:
         message = app._overlay.set_mic_text.call_args[0][0]
         assert "Blue Yeti" in message
         assert "not found" in message
-        app._settings_window.show_warning.assert_called()
 
-    def test_settings_saved_path_runs(self, app):
-        """_on_settings_saved also called the deleted method."""
-        app._config.set("api_key", "gsk_fake_key_for_test")
-        app._on_settings_saved()
+    def test_the_microphone_pane_says_so_too(self, app):
+        """The old settings window was pushed a warning. The pane reads the
+        same config the recorder did and says it for itself."""
+        app._build_settings_window()
+        app._config.set("mic_device_name", "Blue Yeti")
+        pane = app._settings_window.pane("microphone")
+        pane.refresh()
+        assert "Blue Yeti" in pane.warning_text()
+
+    def test_there_is_no_save_everything_path_any_more(self, app):
+        """Settings apply one at a time through apply_setting, which
+        tests/test_apply_setting.py covers. A surviving _on_settings_saved
+        would be a second route that restarts the whole app on a toggle."""
+        assert not hasattr(app, "_on_settings_saved")
 
 
 class TestOverlayIsWiredToTheLiveRecorder:
     """The recording animation is only honest if it reads the microphone that
-    is actually recording — and _on_settings_saved replaces the recorder."""
+    is actually recording — and applying a microphone setting replaces the
+    recorder."""
 
     def test_the_overlay_is_built_with_the_configured_style(self, qapp, tmp_path):
         from unittest.mock import MagicMock, patch
@@ -231,3 +241,83 @@ class TestACleanupFailureDoesNotSwallowTheDictation:
         app._process_audio(b"\x00" * 100, 2.0)
 
         assert app._history.add.called
+
+
+class TestTheAppOpensTheNewWindow:
+    """The old settings, History and Statistics windows are gone; everything
+    is one window with a sidebar."""
+
+    def _real_window(self, app):
+        """Replace the fixture's MagicMock with the window the app builds."""
+        app._build_settings_window()
+        return app._settings_window
+
+    def test_settings_opens_the_sidebar_window(self, app):
+        from src.ui_pyqt6.settings_window import SettingsWindow
+
+        window = self._real_window(app)
+        app._show_settings()
+        assert isinstance(window, SettingsWindow)
+
+    def test_the_tray_history_item_opens_the_history_pane(self, app):
+        window = self._real_window(app)
+        app._show_history()
+        assert window.current_pane().PANE_ID == "history"
+
+    def test_the_tray_stats_item_opens_the_stats_pane(self, app):
+        window = self._real_window(app)
+        app._show_stats()
+        assert window.current_pane().PANE_ID == "stats"
+
+    def test_the_old_windows_are_gone(self):
+        import importlib
+
+        for name in ("settings_ui", "history_window", "stats_window"):
+            try:
+                importlib.import_module("src.ui_pyqt6." + name)
+            except ImportError:
+                continue
+            raise AssertionError("src.ui_pyqt6.%s still exists" % name)
+
+
+class TestTheRailFollowsTheApp:
+    def test_recording_turns_the_rail_dot_to_listening(self, app):
+        app._build_settings_window()
+        app._set_state("recording")
+        assert app._settings_window._rail.status_text().startswith("Listening")
+
+    def test_the_tray_and_the_rail_are_told_together(self, app):
+        app._build_settings_window()
+        app._set_state("error")
+        app._tray.set_state.assert_called_with("error")
+        assert app._settings_window._rail.status_text().startswith("Problem")
+
+    def test_a_state_change_before_the_window_exists_does_not_crash(self, app):
+        app._settings_window = None
+        app._set_state("processing")
+        app._tray.set_state.assert_called_with("processing")
+
+
+class TestAUserWithNoApiKeyLandsSomewhereUseful:
+    def test_a_keyless_start_is_routed_to_the_no_key_finish(self, app, monkeypatch):
+        app._config.set("api_key", "")
+        taken = []
+        monkeypatch.setattr(
+            "src.main.QTimer.singleShot",
+            lambda _ms, fn: taken.append(getattr(fn, "__name__", str(fn))),
+        )
+        app._startup_stage_2()
+        assert taken == ["_startup_finish_no_key"]
+
+    def test_an_unconfigured_start_opens_the_general_pane(self, app):
+        app._build_settings_window()
+        app._config.set("api_key", "")
+        app._startup_finish_no_key()
+        assert app._settings_window.current_pane().PANE_ID == "general"
+
+
+class TestSettingsChangesGoThroughApplySetting:
+    def test_the_window_is_given_an_apply_that_reaches_the_app(self, app):
+        app._build_settings_window()
+        app._settings_window.ctx.apply("language", "de")
+        assert app._config.get("language") == "de"

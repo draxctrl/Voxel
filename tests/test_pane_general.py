@@ -35,8 +35,10 @@ class TestTheConfigDefaultsMatchTheUI:
     def test_the_theme_follows_windows_by_default(self):
         assert DEFAULT_CONFIG["theme"] == "system"
 
-    def test_the_undo_hotkey_starts_unset(self):
-        assert DEFAULT_CONFIG["undo_hotkey"] == ""
+    def test_there_is_no_undo_hotkey_setting(self):
+        """It was removed from Voxel; a default here would reintroduce a
+        key nothing reads."""
+        assert "undo_hotkey" not in DEFAULT_CONFIG
 
 
 class TestTheApiKeyIsNotLeaked:

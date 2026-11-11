@@ -16,11 +16,52 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from ..theme import IOSSwitch
+from ..theme import IOSSwitch, current_palette
 
 #: Rows stop growing here. A 900px-wide row puts its label and its control
 #: a screen apart; the window's remaining width becomes margin instead.
 CONTENT_MAX_WIDTH = 720
+
+
+def repaint_with(widget, stylesheet: str) -> None:
+    """Apply a stylesheet and make Qt actually repaint from it.
+
+    A plain QWidget takes its background from the palette Qt computes when
+    a stylesheet is first polished. Replacing the stylesheet later changes
+    the rule but not the painted pixels, so a theme change reaches the
+    rows and leaves the rail and the pane surface behind. Unpolishing and
+    re-polishing forces the recomputation.
+    """
+    # Only the widget that owns the rule opts into a styled background.
+    # Setting it on children makes one with no rule of its own paint the
+    # stale background it inherited.
+    widget.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+    widget.setStyleSheet(stylesheet)
+    style = widget.style()
+    if style is None:
+        widget.update()
+        return
+    # The rule often names a child by object name (pane_inner, pane_scroll),
+    # and it is that child's palette that has to be recomputed, so the whole
+    # subtree is re-polished rather than this widget alone.
+    for target in [widget] + widget.findChildren(QWidget):
+        style.unpolish(target)
+        style.polish(target)
+        target.update()
+
+
+def pane_surface_qss(p: dict) -> str:
+    """The rule every pane paints its own background with.
+
+    `pane_column` is transparent rather than coloured: it holds the rows
+    and has no rule of its own, so a background would be whatever it
+    inherited when it was first polished - the old theme, after a switch.
+    """
+    return (
+        "QWidget#pane_inner, QScrollArea#pane_scroll {"
+        " background-color: %s; }"
+        "QWidget#pane_column { background: transparent; }" % p["pane"]
+    )
 
 
 def link_markup(text: str, url: str, colour: str) -> str:
@@ -58,7 +99,7 @@ class PaneHeader(QWidget):
             " background: transparent;".format(**p)
         )
         self._subtitle.setStyleSheet(
-            "color: {muted}; font-size: 12.5px; background: transparent;".format(**p)
+            "color: {muted}; font-size: 13px; background: transparent;".format(**p)
         )
 
 
@@ -72,8 +113,11 @@ class _Ring(QWidget):
         super().__init__(parent)
         self.setFixedSize(QSize(self.SIZE, self.SIZE))
         self._selected = False
-        self._ring = QColor("#6d6f78")
-        self._accent = QColor("#6366f1")
+        # From the live palette, not a literal: a hard-coded start colour is
+        # one that does not follow the theme until something restyles it.
+        palette = current_palette()
+        self._ring = QColor(palette["faint"])
+        self._accent = QColor(palette["accent"])
 
     def set_selected(self, selected: bool) -> None:
         self._selected = selected
@@ -152,7 +196,7 @@ class ChoiceRow(QFrame):
         self._palette = dict(p)
         self._ring.set_colours(p["faint"], p["accent"])
         self._title.setStyleSheet(
-            "color: {text}; font-size: 13.5px; font-weight: 600;"
+            "color: {text}; font-size: 14px; font-weight: 600;"
             " background: transparent;".format(**p)
         )
         self._subtitle.setStyleSheet(
@@ -228,7 +272,7 @@ class SwitchRow(QFrame):
             " border: 1px solid {row_border}; border-radius: 9px; }}".format(**p)
         )
         self._label.setStyleSheet(
-            "color: {text}; font-size: 13.5px; font-weight: 500;"
+            "color: {text}; font-size: 14px; font-weight: 500;"
             " background: transparent;".format(**p)
         )
         self._description.setStyleSheet(
@@ -253,7 +297,7 @@ class LinkLabel(QLabel):
 
     def restyle(self, p: dict) -> None:
         self.setStyleSheet(
-            "color: {accent}; font-size: 12.5px; font-weight: 600;"
+            "color: {accent}; font-size: 13px; font-weight: 600;"
             " background: transparent;".format(**p)
         )
 

@@ -6,8 +6,11 @@ already tracks for the tray.
 """
 from __future__ import annotations
 
+import os
+import sys
+
 from PyQt6.QtCore import Qt, QSize, pyqtSignal
-from PyQt6.QtGui import QColor, QPainter
+from PyQt6.QtGui import QColor, QPainter, QPixmap
 from PyQt6.QtWidgets import (
     QFrame,
     QSizePolicy,
@@ -20,9 +23,29 @@ from PyQt6.QtWidgets import (
 )
 
 from .icons import icon
+from .panes.widgets import repaint_with
 from .theme import current_palette
 
 RAIL_WIDTH = 198
+
+#: How tall the app mark is beside the name.
+LOGO_SIZE = 22
+
+
+def _logo_path() -> str | None:
+    """The app icon, or None when it is not bundled."""
+    meipass = getattr(sys, "_MEIPASS", None)
+    candidates = []
+    if meipass:
+        candidates.append(os.path.join(meipass, "src", "assets", "icon.png"))
+        candidates.append(os.path.join(meipass, "assets", "icon.png"))
+    here = os.path.dirname(os.path.abspath(__file__))
+    candidates.append(os.path.normpath(os.path.join(here, "assets", "icon.png")))
+    candidates.append(os.path.normpath(os.path.join(here, "..", "assets", "icon.png")))
+    for candidate in candidates:
+        if os.path.isfile(candidate):
+            return candidate
+    return None
 
 #: state -> (word, colour). "accent" is resolved from the live palette.
 _STATES: dict[str, tuple[str, str]] = {
@@ -126,9 +149,35 @@ class NavRail(QWidget):
         layout.setContentsMargins(10, 16, 10, 12)
         layout.setSpacing(0)
 
+        # The app mark beside the name. A missing file costs the picture,
+        # never the window.
+        brand_row = QHBoxLayout()
+        brand_row.setContentsMargins(6, 0, 0, 0)
+        brand_row.setSpacing(8)
+        self._logo = QLabel()
+        self._logo.setFixedSize(QSize(LOGO_SIZE, LOGO_SIZE))
+        self._logo.setVisible(False)
+        self._has_logo = False
+        path = _logo_path()
+        if path:
+            pixmap = QPixmap(path)
+            if not pixmap.isNull():
+                self._logo.setPixmap(
+                    pixmap.scaled(
+                        LOGO_SIZE,
+                        LOGO_SIZE,
+                        Qt.AspectRatioMode.KeepAspectRatio,
+                        Qt.TransformationMode.SmoothTransformation,
+                    )
+                )
+                self._logo.setVisible(True)
+                self._has_logo = True
+        brand_row.addWidget(self._logo, 0, Qt.AlignmentFlag.AlignVCenter)
+
         self._brand = QLabel("Voxel")
         self._brand.setObjectName("rail_brand")
-        layout.addWidget(self._brand)
+        brand_row.addWidget(self._brand, 1, Qt.AlignmentFlag.AlignVCenter)
+        layout.addLayout(brand_row)
         _soft_gap(layout, 16)
 
         for title, rows in self.ENTRIES:
@@ -180,6 +229,14 @@ class NavRail(QWidget):
         button.setAutoExclusive(False)
         button.clicked.connect(lambda _checked, pid=pane_id: self._on_clicked(pid))
         return button
+
+    def logo_is_shown(self) -> bool:
+        """Whether the app mark loaded.
+
+        Not `isVisible()`: a child of a window that has not been shown yet
+        reports False, which would say "no logo" for a rail that has one.
+        """
+        return self._has_logo
 
     def entry_button(self, pane_id: str) -> QPushButton:
         """The clickable row for a pane id."""
@@ -238,7 +295,7 @@ class NavRail(QWidget):
 
     def restyle(self, palette: dict) -> None:
         self._palette = dict(palette)
-        self.setStyleSheet(_rail_qss(self._palette))
+        repaint_with(self, _rail_qss(self._palette))
         self._apply_selection()
         self.set_status(self._state, self._shortcut)
 
@@ -253,12 +310,11 @@ QLabel#rail_brand {{
     color: {rail_text_active};
     font-size: 16px;
     font-weight: 700;
-    padding-left: 6px;
     background: transparent;
 }}
 QLabel#rail_group {{
     color: {faint};
-    font-size: 10.5px;
+    font-size: 11px;
     font-weight: 700;
     letter-spacing: 1px;
     padding-left: 6px;
@@ -269,7 +325,7 @@ QPushButton#rail_entry {{
     background: transparent;
     border: none;
     border-radius: 6px;
-    font-size: 13.5px;
+    font-size: 14px;
     padding-left: 8px;
     text-align: left;
 }}
@@ -288,7 +344,7 @@ QFrame#rail_divider {{
 }}
 QLabel#rail_status {{
     color: {muted};
-    font-size: 11.5px;
+    font-size: 12px;
     background: transparent;
 }}
 """.format(**p)

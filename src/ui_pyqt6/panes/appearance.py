@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import QLabel
 
 from ..recording_styles import DEFAULT_STYLE, RECORDING_STYLES
 from . import Pane, PaneContext
-from .widgets import ChoiceRow, PaneHeader, pane_body
+from .widgets import pane_surface_qss, repaint_with, ChoiceRow, PaneHeader, pane_body
 
 THEME_IDS = ("system", "light", "dark")
 
@@ -111,10 +111,7 @@ class AppearancePane(Pane):
 
     def restyle(self, palette: dict) -> None:
         self._palette = dict(palette)
-        self.setStyleSheet(
-            "QWidget#pane_inner, QScrollArea#pane_scroll {{"
-            " background-color: {pane}; }}".format(**self._palette)
-        )
+        repaint_with(self, pane_surface_qss(self._palette))
         self._header.restyle(self._palette)
         heading_qss = (
             "color: {faint}; font-size: 11px; font-weight: 700;"

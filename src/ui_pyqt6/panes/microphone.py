@@ -12,8 +12,9 @@ from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import QColor, QPainter
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
+from ..theme import current_palette
 from . import Pane, PaneContext
-from .widgets import ChoiceRow, PaneHeader, pane_body
+from .widgets import pane_surface_qss, repaint_with, ChoiceRow, PaneHeader, pane_body
 
 logger = logging.getLogger(__name__)
 
@@ -70,8 +71,9 @@ class _LevelMeter(QWidget):
         super().__init__(parent)
         self.setFixedSize(QSize(46, 18))
         self._level = 0.0
-        self._on = QColor("#6366f1")
-        self._off = QColor("#32343b")
+        palette = current_palette()
+        self._on = QColor(palette["accent"])
+        self._off = QColor(palette["row_border"])
 
     def set_level(self, level: float) -> None:
         self._level = max(0.0, min(1.0, float(level)))
@@ -268,13 +270,10 @@ class MicrophonePane(Pane):
 
     def restyle(self, palette: dict) -> None:
         self._palette = dict(palette)
-        self.setStyleSheet(
-            "QWidget#pane_inner, QScrollArea#pane_scroll {{"
-            " background-color: {pane}; }}".format(**self._palette)
-        )
+        repaint_with(self, pane_surface_qss(self._palette))
         self._header.restyle(self._palette)
         self._warning_label.setStyleSheet(
-            "color: {warning}; font-size: 12.5px; background: transparent;".format(
+            "color: {warning}; font-size: 13px; background: transparent;".format(
                 **self._palette
             )
         )

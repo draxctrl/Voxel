@@ -149,3 +149,43 @@ class TestAFailedRestartDoesNotLoseTheSetting:
         reloaded = Config(config_path=app._config._path)
         reloaded.load()
         assert reloaded.get("mic_device_name") == "Broken Mic"
+
+
+class TestChangingTheThemeRestylesTheWholeWindow:
+    """Review Focus 3. A theme change that reaches the rows but not the
+    rail leaves a half-light, half-dark window - the exact thing this
+    rebuild exists to kill."""
+
+    def _window(self, app):
+        app._build_settings_window()
+        return app._settings_window
+
+    def test_choosing_light_restyles_the_rail_too(self, app):
+        from src.ui_pyqt6.theme import LIGHT
+
+        window = self._window(app)
+        app.apply_setting("theme", "light")
+        assert "background-color: " + LIGHT["rail"] in window._rail.styleSheet()
+
+    def test_choosing_light_restyles_the_window_surface(self, app):
+        from src.ui_pyqt6.theme import LIGHT
+
+        window = self._window(app)
+        app.apply_setting("theme", "light")
+        assert LIGHT["pane"] in window.styleSheet()
+
+    def test_choosing_light_restyles_every_pane_not_only_the_visible_one(self, app):
+        from src.ui_pyqt6.theme import LIGHT
+
+        window = self._window(app)
+        app.apply_setting("theme", "light")
+        for pane in window.panes():
+            assert LIGHT["pane"] in pane.styleSheet(), pane.PANE_ID
+
+    def test_choosing_dark_again_puts_it_back(self, app):
+        from src.ui_pyqt6.theme import DARK
+
+        window = self._window(app)
+        app.apply_setting("theme", "light")
+        app.apply_setting("theme", "dark")
+        assert "background-color: " + DARK["rail"] in window._rail.styleSheet()

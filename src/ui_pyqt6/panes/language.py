@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import QHBoxLayout, QLabel
 
 from ..flags import flag_icon
 from . import Pane, PaneContext
-from .widgets import ChoiceRow, PaneHeader, pane_body
+from .widgets import pane_surface_qss, repaint_with, ChoiceRow, PaneHeader, pane_body
 
 logger = logging.getLogger(__name__)
 
@@ -118,10 +118,7 @@ class LanguagePane(Pane):
 
     def restyle(self, palette: dict) -> None:
         self._palette = dict(palette)
-        self.setStyleSheet(
-            "QWidget#pane_inner, QScrollArea#pane_scroll {{"
-            " background-color: {pane}; }}".format(**self._palette)
-        )
+        repaint_with(self, pane_surface_qss(self._palette))
         self._header.restyle(self._palette)
         for row in self._rows.values():
             row.restyle(self._palette)

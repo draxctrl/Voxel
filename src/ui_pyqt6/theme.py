@@ -494,6 +494,25 @@ def current_palette() -> dict[str, str]:
     return _current_palette
 
 
+def _set_application_font(app) -> None:
+    """Make small text crisp.
+
+    Qt's default hinting lets the stems of 11-13px letters fall between
+    pixels, which reads as soft, slightly smudged text - the single
+    biggest thing that makes a Qt window look unfinished next to a native
+    one. Full hinting snaps them to the grid. Set on the application font
+    so every widget inherits it; stylesheets override the size, not this.
+    """
+    from PyQt6.QtGui import QFont, QFontDatabase
+
+    font = app.font()
+    if "Inter" in QFontDatabase.families():
+        font.setFamily("Inter")
+    font.setHintingPreference(QFont.HintingPreference.PreferFullHinting)
+    font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
+    app.setFont(font)
+
+
 def apply_theme(app, theme_name: str | None = None) -> str:
     """Style the whole application. Returns the theme name applied.
 
@@ -506,6 +525,7 @@ def apply_theme(app, theme_name: str | None = None) -> str:
     name = theme_name or detect_system_theme()
     palette = palette_for(name)
     _current_palette = palette
+    _set_application_font(app)
     app.setStyleSheet(build_qss(palette))
 
     # Repaint hand-drawn controls, which read tokens rather than QSS.

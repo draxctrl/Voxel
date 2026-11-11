@@ -18,7 +18,7 @@ from PyQt6.QtWidgets import (
 
 from ..icons import icon as load_icon
 from . import Pane, PaneContext
-from .widgets import PaneHeader, pane_body
+from .widgets import pane_surface_qss, repaint_with, PaneHeader, pane_body
 
 EMPTY_MESSAGE = (
     'No voice commands yet. Add one below - say "brb" and Voxel can type '
@@ -72,7 +72,7 @@ class _CommandRow(QFrame):
             "color: {faint}; font-size: 13px; background: transparent;".format(**p)
         )
         self._expansion.setStyleSheet(
-            "color: {muted}; font-size: 12.5px; background: transparent;".format(**p)
+            "color: {muted}; font-size: 13px; background: transparent;".format(**p)
         )
         self.delete_button.setIcon(load_icon("trash", p["muted"], 16))
         self.delete_button.setStyleSheet(
@@ -225,27 +225,24 @@ class VoiceCommandsPane(Pane):
     def restyle(self, palette: dict) -> None:
         self._palette = dict(palette)
         p = self._palette
-        self.setStyleSheet(
-            "QWidget#pane_inner, QScrollArea#pane_scroll {{"
-            " background-color: {pane}; }}".format(**p)
-        )
+        repaint_with(self, pane_surface_qss(p))
         self._header.restyle(p)
         for label in (self._empty, self._add_status):
             label.setStyleSheet(
-                "color: {muted}; font-size: 12.5px; background: transparent;".format(**p)
+                "color: {muted}; font-size: 13px; background: transparent;".format(**p)
             )
         self._add_card.setStyleSheet(
             "QFrame#setting_row {{ background-color: {row};"
             " border: 1px solid {row_border}; border-radius: 9px; }}".format(**p)
         )
         self._add_label.setStyleSheet(
-            "color: {text}; font-size: 13.5px; font-weight: 600;"
+            "color: {text}; font-size: 14px; font-weight: 600;"
             " background: transparent;".format(**p)
         )
         field_qss = (
             "QLineEdit {{ color: {text}; background-color: {card_alt};"
             " border: 1px solid {row_border}; border-radius: 7px;"
-            " padding: 4px 10px; font-size: 12.5px; }}"
+            " padding: 4px 10px; font-size: 13px; }}"
             "QLineEdit:focus {{ border-color: {accent}; }}".format(**p)
         )
         self._trigger_field.setStyleSheet(field_qss)

@@ -16,6 +16,7 @@ a = Analysis(
         ('src/assets/icon.png', 'src/assets'),
         ('src/assets/fonts', 'src/assets/fonts'),
         ('src/assets/flags', 'src/assets/flags'),
+        ('src/assets/icons/phosphor', 'src/assets/icons/phosphor'),
     ],
     hiddenimports=[
         'pynput.keyboard._win32',
