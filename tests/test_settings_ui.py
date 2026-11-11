@@ -246,3 +246,34 @@ class TestDisclosureRowsAreWired:
     def test_help_and_voice_commands_rows_exist(self, window):
         assert _row_titled(window, "Help & FAQ") is not None
         assert _row_titled(window, "Voice Commands") is not None
+
+
+class TestContentIsReachable:
+    """Grouped cards are taller than the flat stack they replaced. If the
+    content outgrows the window, every row must still be reachable and Save
+    must never scroll away."""
+
+    def test_the_groups_scroll(self, window):
+        assert window._scroll is not None
+        assert window._scroll.widgetResizable() is True
+
+    def test_save_is_outside_the_scroll_area(self, window):
+        assert not window._scroll.isAncestorOf(window._save_btn)
+
+    def test_the_last_group_is_reachable(self, window):
+        window.show()
+        bar = window._scroll.verticalScrollBar()
+        card = window._groups["YOUR DATA"]
+        bar.setValue(bar.maximum())
+        bottom = card.mapTo(window._scroll.viewport(), card.rect().bottomLeft()).y()
+        assert bottom <= window._scroll.viewport().height(), (
+            "the last group is still below the viewport at full scroll"
+        )
+
+    def test_there_is_no_horizontal_scrollbar(self, window):
+        from PyQt6.QtCore import Qt
+        window.show()
+        assert (
+            window._scroll.horizontalScrollBarPolicy()
+            == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )

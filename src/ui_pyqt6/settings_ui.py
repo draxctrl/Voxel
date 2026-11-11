@@ -22,6 +22,7 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QComboBox,
     QFrame,
+    QScrollArea,
     QSizePolicy,
     QApplication,
 )
@@ -30,7 +31,13 @@ from pynput import keyboard as pynput_keyboard
 # One source for colour and chrome. settings_ui used to carry its own copy of
 # the palette, the stylesheet and these widgets; two copies is what let the
 # scrollbars and dropdowns drift apart.
-from src.ui_pyqt6.theme import ArrowComboBox, IOSSwitch, current_palette
+from src.ui_pyqt6.theme import (
+    SCROLLBAR_GUTTER,
+    SCROLLBAR_THICKNESS,
+    ArrowComboBox,
+    IOSSwitch,
+    current_palette,
+)
 from src.ui_pyqt6.flags import flag_icon
 from src.ui_pyqt6.ios_layout import (
     DisclosureRow,
@@ -386,12 +393,32 @@ class SettingsWindow(QWidget):
         help_row.clicked.connect(self._show_help)
         card.add_row(help_row)
 
-        root_layout.addLayout(groups_col)
+        # The cards are taller than the flat stack they replaced, and taller
+        # again at 125%/150% display scaling. Scrolling them means a new group
+        # can never push a row out of reach; Save and the footer stay outside,
+        # so they are always on screen.
+        groups_host = QWidget()
+        groups_host.setObjectName("groups_host")
+        groups_host.setLayout(groups_col)
+        groups_col.addStretch(1)
+
+        self._scroll = QScrollArea()
+        self._scroll.setObjectName("groups_scroll")
+        self._scroll.setWidget(groups_host)
+        self._scroll.setWidgetResizable(True)
+        self._scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self._scroll.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        # The scrollbar is styled app-wide with its own gutter; this keeps the
+        # cards clear of it instead of letting it sit on their edge.
+        groups_col.setContentsMargins(0, 0, SCROLLBAR_THICKNESS + SCROLLBAR_GUTTER, 0)
+        root_layout.addWidget(self._scroll, stretch=1)
 
         self._sync_offline_state()
-
-        # -- Spacer -------------------------------------------------------
-        root_layout.addStretch(1)
 
         # -- Save button --------------------------------------------------
         root_layout.addSpacing(16)

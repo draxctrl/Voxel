@@ -178,6 +178,13 @@ QLabel {{
     color: {p['text']};
 }}
 
+/* A switch is a QCheckBox, so the QWidget rule above would paint a
+   window-coloured box around the pill wherever one sits on a card. */
+QCheckBox {{
+    background: transparent;
+    color: {p['text']};
+}}
+
 QLabel#subtitle, QLabel#section_sub, QLabel#status_label {{
     color: {p['secondary']};
     font-size: 11px;
@@ -520,7 +527,49 @@ class ArrowComboBox(QComboBox):
         super().showPopup()
 
     def paintEvent(self, event):
-        super().paintEvent(event)
+        # A fixed-width combo in a settings row is narrower than a long device
+        # name. Qt's stylesheet style clips the label mid-word instead of
+        # eliding it, so the text is painted here: the frame is drawn without
+        # its label, then the label goes back elided. The item text itself is
+        # untouched, so the popup still shows every name in full.
+        from PyQt6.QtWidgets import QStyle, QStyleOptionComboBox
+
+        opt = QStyleOptionComboBox()
+        self.initStyleOption(opt)
+        full_text = opt.currentText
+        opt.currentText = ""
+        painter = QPainter(self)
+        self.style().drawComplexControl(
+            QStyle.ComplexControl.CC_ComboBox, opt, painter, self
+        )
+        text_rect = self.style().subControlRect(
+            QStyle.ComplexControl.CC_ComboBox,
+            opt,
+            QStyle.SubControl.SC_ComboBoxEditField,
+            self,
+        )
+        if not opt.currentIcon.isNull():
+            icon_size = opt.iconSize
+            opt.currentIcon.paint(
+                painter,
+                text_rect.x(),
+                text_rect.y() + (text_rect.height() - icon_size.height()) // 2,
+                icon_size.width(),
+                icon_size.height(),
+            )
+            text_rect.setLeft(text_rect.left() + icon_size.width() + 8)
+        # Leave the chevron its room.
+        text_rect.setRight(max(text_rect.left(), self.width() - 26))
+        painter.setPen(QColor(current_palette()["secondary" if not self.isEnabled() else "text"]))
+        painter.drawText(
+            text_rect,
+            int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
+            self.fontMetrics().elidedText(
+                full_text, Qt.TextElideMode.ElideRight, text_rect.width()
+            ),
+        )
+        painter.end()
+
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         pen = QPen(QColor(current_palette()['secondary']), 1.8)

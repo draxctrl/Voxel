@@ -105,8 +105,9 @@ class SettingsRow(QWidget):
             self.subtitle_label.setWordWrap(True)
             text_col.addWidget(self.subtitle_label)
 
-        self._row.addLayout(text_col)
-        self._row.addStretch(1)
+        # The text column takes the room the control does not want, so a
+        # subtitle wraps only when it genuinely cannot fit.
+        self._row.addLayout(text_col, 1)
 
         self.control = control
         if control is not None:

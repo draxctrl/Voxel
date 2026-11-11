@@ -277,3 +277,35 @@ class TestGroupedCardStyling:
         """A row is a bare QWidget: without this it paints over its own card."""
         from src.ui_pyqt6.theme import build_qss, LIGHT
         assert "QWidget#settings_row {\n    background: transparent;" in build_qss(LIGHT)
+
+
+class TestSwitchesDoNotPaintTheirOwnBackground:
+    """A switch is a QCheckBox, so the QWidget background rule reaches it and
+    paints a window-coloured box around the pill when it sits on a card."""
+
+    def test_checkbox_opts_out_of_the_window_background(self):
+        from src.ui_pyqt6.theme import build_qss, LIGHT
+        assert "QCheckBox {\n    background: transparent;" in build_qss(LIGHT)
+
+    def test_a_switch_on_a_card_leaves_the_card_showing(self, qapp):
+        """Rendered proof: the pixels around the pill must be card colour."""
+        from PyQt6.QtGui import QPixmap, QColor
+        from src.ui_pyqt6.theme import apply_theme, IOSSwitch, LIGHT
+        from src.ui_pyqt6.ios_layout import GroupCard, SettingsRow
+        apply_theme(qapp, "light")
+        card = GroupCard()
+        switch = IOSSwitch()
+        switch.setFixedWidth(IOSSwitch.TRACK_W + 4)
+        card.add_row(SettingsRow("Offline mode", control=switch))
+        card.resize(360, 44)
+        card.show()
+        pm = QPixmap(card.size())
+        card.render(pm)
+        img = pm.toImage()
+        # The switch widget is a few pixels wider than the pill it draws. That
+        # sliver is where a window-coloured background shows up as a box.
+        sliver_x = switch.x() + switch.width() - 2
+        found = img.pixelColor(sliver_x, 22).name().lower()
+        assert found == LIGHT["card"].lower(), (
+            f"the switch painted {found} over its card at x={sliver_x}"
+        )
