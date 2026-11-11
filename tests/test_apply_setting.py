@@ -189,3 +189,67 @@ class TestChangingTheThemeRestylesTheWholeWindow:
         app.apply_setting("theme", "light")
         app.apply_setting("theme", "dark")
         assert "background-color: " + DARK["rail"] in window._rail.styleSheet()
+
+
+class TestAFirstRunUserCanDictateAfterPastingTheirKey:
+    """Voxel only starts the hotkey listener on the with-a-key startup
+    branch. A user who arrives with no key, pastes one into General and
+    presses the shortcut must not meet silence until they restart."""
+
+    def test_pasting_a_key_starts_the_hotkey_listener(self, app):
+        app._config.set("api_key", "")
+        app._hotkey_listener = None
+        app.apply_setting("api_key", "gsk_a_fake_key")
+        assert app._hotkey_listener is not None, (
+            "the shortcut does nothing until Voxel is restarted"
+        )
+
+    def test_a_key_that_does_not_work_does_not_start_a_listener(self, app):
+        import src.main as main_mod
+        from unittest.mock import patch
+
+        app._config.set("api_key", "")
+        app._hotkey_listener = None
+        with patch.object(main_mod, "Groq", side_effect=RuntimeError("bad key")):
+            app.apply_setting("api_key", "gsk_broken")
+        assert app._hotkey_listener is None
+
+    def test_an_already_running_listener_is_not_restarted(self, app):
+        app._config.set("api_key", "gsk_a_fake_key")
+        app._init_groq()
+        existing = app._hotkey_listener = object()
+        app.apply_setting("api_key", "gsk_another_fake_key")
+        assert app._hotkey_listener is existing
+
+
+class TestAPinnedThemeSurvives:
+    """Choosing Light pins it. It has to still be light after a restart,
+    and it must not be dragged back to dark when Windows changes at dusk."""
+
+    def test_a_saved_theme_is_resolved_rather_than_the_system_one(self, app):
+        app._config.set("theme", "light")
+        assert app._resolve_theme() == "light"
+
+    def test_following_windows_resolves_to_none(self, app):
+        app._config.set("theme", "system")
+        assert app._resolve_theme() is None
+
+    def test_an_os_theme_change_keeps_a_pinned_theme(self, app, monkeypatch):
+        from src.ui_pyqt6 import theme as theme_mod
+        from src.ui_pyqt6.theme import LIGHT
+
+        app._config.set("theme", "light")
+        monkeypatch.setattr(theme_mod, "detect_system_theme", lambda: "dark")
+        app._on_system_theme_changed()
+        assert theme_mod.current_palette() is LIGHT, (
+            "Windows going dark overrode a theme the user pinned"
+        )
+
+    def test_following_windows_still_follows_windows(self, app, monkeypatch):
+        from src.ui_pyqt6 import theme as theme_mod
+        from src.ui_pyqt6.theme import LIGHT
+
+        app._config.set("theme", "system")
+        monkeypatch.setattr(theme_mod, "detect_system_theme", lambda: "light")
+        app._on_system_theme_changed()
+        assert theme_mod.current_palette() is LIGHT

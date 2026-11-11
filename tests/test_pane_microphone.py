@@ -143,3 +143,41 @@ class TestTheLevelMeters:
 class TestThePaneDeclaresWhatItOwns:
     def test_it_owns_both_microphone_keys(self):
         assert MicrophonePane.OWNS == frozenset({"mic_device_name", "mic_device"})
+
+
+class TestTheMetersActuallyMove:
+    """The pane tells the user to pick the device whose bars move. Nothing
+    called poll_levels, so the bars never moved and the instruction was
+    impossible to follow."""
+
+    def test_showing_the_pane_starts_polling(self, qapp, ctx, two_devices):
+        pane = MicrophonePane(ctx)
+        pane.refresh()
+        pane.show()
+        qapp.processEvents()
+        assert pane._level_timer.isActive() is True
+
+    def test_hiding_the_pane_stops_polling(self, qapp, ctx, two_devices):
+        pane = MicrophonePane(ctx)
+        pane.refresh()
+        pane.show()
+        qapp.processEvents()
+        pane.hide()
+        qapp.processEvents()
+        assert pane._level_timer.isActive() is False
+
+    def test_a_tick_moves_the_chosen_row_s_meter(self, qapp, ctx, two_devices):
+        class FakeRecorder:
+            def current_level(self):
+                return 0.8
+
+        ctx.recorder = FakeRecorder()
+        pane = MicrophonePane(ctx)
+        pane.refresh()
+        pane.show()
+        qapp.processEvents()
+        assert pane.level_for(pane.selected_id()) == 0.0
+        pane._level_timer.timeout.emit()
+        assert pane.level_for(pane.selected_id()) > 0.5, (
+            "a timer tick did not reach the meter"
+        )

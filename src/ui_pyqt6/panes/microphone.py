@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 
-from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtCore import Qt, QSize, QTimer
 from PyQt6.QtGui import QColor, QPainter
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
@@ -20,6 +20,11 @@ logger = logging.getLogger(__name__)
 
 #: The row meaning "whatever Windows is set to".
 SYSTEM_DEFAULT_ID = "__system_default__"
+
+#: How often the meters are redrawn while the pane is on screen. The
+#: recorder measures the level on every chunk it reads, so this only
+#: decides how smooth the bars look.
+LEVEL_POLL_MS = 60
 
 
 def list_input_devices() -> list[dict]:
@@ -152,7 +157,24 @@ class MicrophonePane(Pane):
         layout.addWidget(self._rows_host)
 
         layout.addStretch(1)
+
+        # The recorder's capture loop measures the level on every chunk it
+        # reads, recording or not - that is how the preroll buffer works -
+        # so the bars only need something to pull that value across. The
+        # timer runs while the pane is on screen and no longer.
+        self._level_timer = QTimer(self)
+        self._level_timer.setInterval(LEVEL_POLL_MS)
+        self._level_timer.timeout.connect(self.poll_levels)
+
         self.refresh()
+
+    def showEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        super().showEvent(event)
+        self._level_timer.start()
+
+    def hideEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        self._level_timer.stop()
+        super().hideEvent(event)
 
     # ------------------------------------------------------------------
 

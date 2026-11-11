@@ -75,18 +75,21 @@ class VoxelApp:
         assets_dir = _get_assets_dir()
         load_fonts(assets_dir)
 
+        # The config comes first: the theme the user pinned lives in it, and
+        # styling the application before reading it would always start in
+        # whatever Windows is set to and ignore their choice.
+        self._config = Config()
+        self._config.load()
+
         # One stylesheet on the QApplication, so every window and every dialog
         # created later inherits it and a theme change restyles all of them.
-        apply_theme(self._qapp)
+        apply_theme(self._qapp, self._resolve_theme())
         self._watch_system_theme()
 
         # Set app icon globally
         ico_path = os.path.join(assets_dir, "icon.ico")
         if os.path.exists(ico_path):
             self._qapp.setWindowIcon(QIcon(ico_path))
-
-        self._config = Config()
-        self._config.load()
 
         # Core components
         self._recorder = MicRecorder(
@@ -381,7 +384,7 @@ class VoxelApp:
         try:
             from PyQt6.QtGui import QGuiApplication
             QGuiApplication.styleHints().colorSchemeChanged.connect(
-                lambda _scheme: apply_theme(self._qapp)
+                lambda _scheme: self._on_system_theme_changed()
             )
         except (AttributeError, TypeError) as e:
             logger.info("Live theme switching unavailable on this Qt build: %s", e)
@@ -539,7 +542,12 @@ class VoxelApp:
             elif key in self._INJECTOR_KEYS:
                 self._rebuild_injector()
             elif key in self._CLEANER_KEYS:
-                self._init_groq()
+                started = self._init_groq()
+                # A user who arrived with no API key never reached the
+                # branch that starts the listener, so pressing the shortcut
+                # did nothing until they restarted Voxel.
+                if started and self._hotkey_listener is None:
+                    self._start_hotkey_listener()
             elif key == "recording_style":
                 self._overlay.set_style(value)
             elif key == "active_profile":
@@ -575,6 +583,16 @@ class VoxelApp:
             chime_path=chime_path,
             always_copy=self._config.get("always_copy", False),
         )
+
+    def _on_system_theme_changed(self) -> None:
+        """Windows switched light/dark.
+
+        Follow it only if the user has not pinned a theme: dragging a
+        pinned-Light window to dark at sunset is the bug, not the feature.
+        """
+        apply_theme(self._qapp, self._resolve_theme())
+        if self._settings_window is not None:
+            self._settings_window.restyle(current_palette())
 
     def _resolve_theme(self) -> str | None:
         """The theme to apply: the user's override, or None to follow Windows."""

@@ -121,11 +121,18 @@ class SettingsWindow(QWidget):
     # theme
 
     def _on_system_theme_changed(self, *_args) -> None:
+        """Windows switched light/dark.
+
+        A theme the user pinned under Appearance wins: following the
+        system here regardless would undo their choice at sunset.
+        """
         from .theme import apply_theme
 
+        choice = self.ctx.config.get("theme", "system")
+        name = None if choice in (None, "", "system") else choice
         app = QGuiApplication.instance()
         if app is not None:
-            apply_theme(app)
+            apply_theme(app, name)
         self.restyle(current_palette())
 
     def restyle(self, palette: dict) -> None:
