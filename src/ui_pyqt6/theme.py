@@ -520,6 +520,19 @@ class ArrowComboBox(QComboBox):
             widest = max(widest, fm.horizontalAdvance(self.itemText(i)))
         return min(max(self.width(), widest + self.ITEM_CHROME), self.MAX_POPUP_WIDTH)
 
+    def wheelEvent(self, event):  # noqa: N802
+        """Scroll the page, never retune the setting under the pointer.
+
+        Qt changes a combo's value on a wheel roll and accepts the event. The
+        settings groups scroll, so without this, rolling the wheel on the way
+        past Microphone silently picks a different microphone and the next Save
+        writes it. Ignoring the event passes it to the scroll area.
+        """
+        if self.view().isVisible():
+            super().wheelEvent(event)
+        else:
+            event.ignore()
+
     def showPopup(self):  # noqa: N802
         self.view().setMinimumWidth(self._popup_width())
         # Deliberately no resize/move of the popup window: that is what made

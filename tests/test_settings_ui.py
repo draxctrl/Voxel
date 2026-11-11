@@ -277,3 +277,76 @@ class TestContentIsReachable:
             window._scroll.horizontalScrollBarPolicy()
             == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         )
+
+
+class TestWheelOverAControlScrollsThePage:
+    """Qt's QComboBox changes its value on a wheel roll and accepts the event.
+    Inside a scroll area that means scrolling past Microphone silently picks a
+    different microphone, and the next Save writes it."""
+
+    def _wheel(self, widget, qapp):
+        from PyQt6.QtCore import QPoint, QPointF, Qt
+        from PyQt6.QtGui import QWheelEvent
+        centre = QPointF(widget.rect().center())
+        event = QWheelEvent(
+            centre,
+            QPointF(widget.mapToGlobal(widget.rect().center())),
+            QPoint(0, -40),
+            QPoint(0, -120),
+            Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.NoModifier,
+            Qt.ScrollPhase.NoScrollPhase,
+            False,
+        )
+        qapp.sendEvent(widget, event)
+        qapp.processEvents()
+        return event
+
+    def test_wheeling_over_a_closed_dropdown_does_not_change_it(self, qapp, window):
+        window.show()
+        for name in ("_mic_combo", "_profile_combo", "_lang_combo", "_activation_combo"):
+            combo = getattr(window, name)
+            before = combo.currentIndex()
+            self._wheel(combo, qapp)
+            assert combo.currentIndex() == before, (
+                f"wheeling over {name} changed the setting to "
+                f"{combo.currentText()!r}"
+            )
+
+    def test_the_wheel_event_is_left_for_the_scroll_area(self, qapp, window):
+        window.show()
+        event = self._wheel(window._mic_combo, qapp)
+        assert not event.isAccepted(), (
+            "the combo swallowed the wheel event, so the page cannot scroll"
+        )
+
+
+class TestStatusMessagesAreSeen:
+    """The status line lives at the top of the first card, inside the scroll
+    area, while Save sits outside it. A refusal the user never sees is a
+    setting that silently did not take."""
+
+    def test_a_refusal_scrolls_itself_into_view(self, qapp, window):
+        window.show()
+        window._scroll.verticalScrollBar().setValue(
+            window._scroll.verticalScrollBar().maximum()
+        )
+        qapp.processEvents()
+        window._hotkey_edit.setText("<ctrl>+<alt>")
+        window._activation_combo.setCurrentIndex(1)
+        window._save()
+        qapp.processEvents()
+
+        top = window._status_label.mapTo(window._scroll.viewport(), window._status_label.rect().topLeft()).y()
+        assert 0 <= top <= window._scroll.viewport().height(), (
+            f"the warning is at y={top} in a {window._scroll.viewport().height()}px viewport"
+        )
+
+
+class TestHelpMatchesTheWindow:
+    def test_the_faq_does_not_point_at_deleted_buttons(self, window):
+        """Task 3 turned the Voice Commands button into a row."""
+        import inspect
+        from src.ui_pyqt6 import settings_ui
+        source = inspect.getsource(settings_ui.SettingsWindow._show_help)
+        assert "Voice Commands button" not in source

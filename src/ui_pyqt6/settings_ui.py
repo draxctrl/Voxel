@@ -829,6 +829,16 @@ class SettingsWindow(QWidget):
     def _set_status(self, text: str, colour: str) -> None:
         self._status_label.setText(text)
         self._status_label.setStyleSheet(f"color: {colour}; font-size: 11px;")
+        # The status line sits at the top of the first card, inside the scroll
+        # area, while Save is outside it. Without this, a refusal raised by
+        # Save can be several hundred pixels above the viewport and the user
+        # never learns their setting did not take.
+        scroll = getattr(self, "_scroll", None)
+        if scroll is not None and text:
+            try:
+                scroll.ensureWidgetVisible(self._status_label)
+            except Exception as e:
+                logger.debug("Could not scroll the status line into view: %s", e)
 
     # ------------------------------------------------------------------
     # Hotkey capture
@@ -1085,11 +1095,11 @@ class SettingsWindow(QWidget):
              "Example: say 'sign off' and Voxel inserts 'Best regards, Drax' "
              "instead of cleaning up your speech.\n\n"
              "Placeholders: {{date}}, {{time}}, {{datetime}}, {{clipboard}}\n\n"
-             "Set up commands via the Voice Commands button in settings."),
+             "Set up commands in the Voice Commands row, under Transcription."),
 
             ("Dictation History",
              "All your dictations are saved automatically.\n\n"
-             "Access history from the tray icon menu or settings. "
+             "Open History from the tray icon menu, or the History row under Your Data. "
              "You can search, copy, and delete entries."),
 
             ("Auto-detect Language",
