@@ -451,3 +451,43 @@ class TestTogglingOfflineDoesNotShiftThePage:
             f"the Dictation Mode row grew from {before}px to {after}px, pushing "
             "everything below it down the page"
         )
+
+
+class TestTheSaveButtonIsNotASlab:
+    """A full-width 42px bar across the bottom of the window dominated the
+    page. Save is one action; it does not need the whole window."""
+
+    def test_it_does_not_span_the_window(self, window, qapp):
+        window.resize(560, 820)
+        window.show()
+        qapp.processEvents()
+        assert window._save_btn.width() < window.width() * 0.5, (
+            f"the save button is {window._save_btn.width()}px across a "
+            f"{window.width()}px window"
+        )
+
+    def test_it_is_not_taller_than_an_ordinary_row(self, window, qapp):
+        from src.ui_pyqt6.ios_layout import ROW_HEIGHT
+        from src.ui_pyqt6.theme import apply_theme
+        # The size comes from the theme, which the app always applies at
+        # startup; another module may have left a different one in force.
+        apply_theme(qapp, "dark")
+        window.resize(560, 820)
+        window.show()
+        qapp.processEvents()
+        assert window._save_btn.height() <= ROW_HEIGHT, (
+            f"the save button is {window._save_btn.height()}px tall against "
+            f"{ROW_HEIGHT}px for an ordinary settings row"
+        )
+
+    def test_it_shares_the_footer_rather_than_taking_its_own(self, window, qapp):
+        """Reclaiming the row is the point; a smaller button on its own line
+        saves nothing."""
+        window.resize(560, 820)
+        window.show()
+        qapp.processEvents()
+        save = window._save_btn.geometry()
+        version = window._version_label.geometry()
+        assert abs(save.center().y() - version.center().y()) <= 12, (
+            "the save button is on a line of its own"
+        )

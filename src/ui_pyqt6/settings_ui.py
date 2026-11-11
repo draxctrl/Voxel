@@ -434,15 +434,10 @@ class SettingsWindow(QWidget):
 
         self._sync_offline_state()
 
-        # -- Save button --------------------------------------------------
-        root_layout.addSpacing(16)
-        self._save_btn = QPushButton("Save Settings")
-        self._save_btn.setObjectName("save_btn")
-        self._save_btn.clicked.connect(self._save)
-        root_layout.addWidget(self._save_btn)
-
-        # -- Footer: support link + version -------------------------------
-        root_layout.addSpacing(8)
+        # -- Footer: support link, version, Save --------------------------
+        # Save shares this row rather than taking a full-width bar of its own
+        # across the bottom of the window.
+        root_layout.addSpacing(10)
         footer_row = QHBoxLayout()
 
         coffee_label = QLabel(
@@ -457,6 +452,12 @@ class SettingsWindow(QWidget):
         version_label = QLabel("v2.0")
         self._version_label = version_label
         footer_row.addWidget(version_label, 0, Qt.AlignmentFlag.AlignRight)
+
+        footer_row.addSpacing(14)
+        self._save_btn = QPushButton("Save Settings")
+        self._save_btn.setObjectName("save_btn")
+        self._save_btn.clicked.connect(self._save)
+        footer_row.addWidget(self._save_btn, 0, Qt.AlignmentFlag.AlignRight)
 
         root_layout.addLayout(footer_row)
 

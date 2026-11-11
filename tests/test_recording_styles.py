@@ -154,3 +154,73 @@ class TestIslandDotStaysRed:
             for x in range(img.width())
         }
         assert ISLAND_DOT_RED.lower() in found
+
+
+class TestTheDrawnLevelIsSmoothed:
+    """Voice peaks arrive in single frames. Drawn raw, the badge jitters."""
+
+    def test_one_jump_does_not_reach_the_target_immediately(self, qapp):
+        from src.ui_pyqt6.recording_styles import build_display
+        d = build_display("island")
+        d.set_level(0.0)
+        d.set_level(1.0)
+        assert d.level == 1.0, "the measured level is reported as measured"
+        assert 0.0 < d.drawn_level < 1.0, (
+            f"the drawn level jumped straight to {d.drawn_level}"
+        )
+
+    def test_it_does_catch_up_over_several_frames(self, qapp):
+        from src.ui_pyqt6.recording_styles import build_display
+        d = build_display("island")
+        for _ in range(40):
+            d.set_level(1.0)
+        assert d.drawn_level > 0.95
+
+    def test_falling_is_gentler_than_rising(self, qapp):
+        """A gate slamming shut looks worse than one easing shut."""
+        from src.ui_pyqt6.recording_styles import build_display
+        rising = build_display("island")
+        rising.set_level(0.0)
+        rising.set_level(1.0)
+        falling = build_display("island")
+        for _ in range(40):
+            falling.set_level(1.0)
+        before = falling.drawn_level
+        falling.set_level(0.0)
+        assert (before - falling.drawn_level) < rising.drawn_level
+
+
+class TestTheIslandHoldsItsShape:
+    """The pill was sized from the level, so every syllable resized the whole
+    badge. The level belongs in the wave, not in the outline."""
+
+    def _island(self):
+        from src.ui_pyqt6.recording_styles import build_display
+        return build_display("island")
+
+    def test_the_pill_is_the_same_width_loud_or_quiet(self, qapp):
+        island = self._island()
+        quiet = island._pill_rect()
+        for _ in range(40):
+            island.set_level(1.0)
+        loud = island._pill_rect()
+        assert quiet.width() == loud.width()
+
+    def test_the_wave_is_a_history_not_a_single_value(self, qapp):
+        island = self._island()
+        island.set_level(1.0)
+        island.set_level(0.0)
+        assert len(island._history) == island.NUM_BARS
+        assert island._history[-1] != island._history[-2]
+
+    def test_the_wave_changes_what_is_drawn(self, qapp):
+        from PyQt6.QtGui import QPixmap
+        island = self._island()
+        island.resize(island.preferred_size())
+        quiet = QPixmap(island.size())
+        island.render(quiet)
+        for _ in range(40):
+            island.set_level(1.0)
+        loud = QPixmap(island.size())
+        island.render(loud)
+        assert quiet.toImage() != loud.toImage(), "the wave does not react"

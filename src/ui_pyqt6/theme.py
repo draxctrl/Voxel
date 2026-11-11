@@ -296,11 +296,14 @@ QPushButton:pressed {{
     background-color: {p['accent_pressed']};
 }}
 
+/* Qt adds the padding on top of min-height, so these two together are the
+   button's height. Kept under a settings row: Save is one action, it does
+   not need a bar across the bottom of the window. */
 QPushButton#save_btn {{
-    font-size: 14px;
-    border-radius: 12px;
-    min-height: 42px;
-    padding: 10px 18px;
+    font-size: 13px;
+    border-radius: 9px;
+    min-height: 30px;
+    padding: 5px 18px;
 }}
 
 QPushButton#capture_btn_recording {{

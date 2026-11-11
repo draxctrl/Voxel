@@ -93,6 +93,9 @@ class RecordingDisplay(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._level = 0.0
+        #: What the paint code uses. The measured level arrives in single-frame
+        #: spikes; drawn straight, every syllable makes the badge jump.
+        self._drawn = 0.0
         self._phase = 0.0
         self._state = "recording"
         self.elapsed_text = ""
@@ -103,8 +106,16 @@ class RecordingDisplay(QWidget):
         self.setStyleSheet("QWidget { background: transparent; }")
 
     # -- inputs ---------------------------------------------------------
+    #: How fast the drawn level chases the measured one, per frame. Rising
+    #: has to stay quick or the badge feels laggy; falling is slower, because
+    #: a gate slamming shut reads worse than one easing shut.
+    ATTACK = 0.30
+    RELEASE = 0.10
+
     def set_level(self, level: float) -> None:
         self._level = max(0.0, min(1.0, float(level)))
+        rate = self.ATTACK if self._level > self._drawn else self.RELEASE
+        self._drawn += (self._level - self._drawn) * rate
         self.update()
 
     def set_state(self, state: str) -> None:
@@ -131,7 +142,13 @@ class RecordingDisplay(QWidget):
     # -- helpers --------------------------------------------------------
     @property
     def level(self) -> float:
+        """The last measured level, as measured."""
         return self._level
+
+    @property
+    def drawn_level(self) -> float:
+        """The smoothed level the paint code uses."""
+        return self._drawn
 
     def _status_text(self) -> str:
         return {
@@ -176,14 +193,14 @@ class OrbDisplay(RecordingDisplay):
 
         # -- the glow: the one thing that follows the voice ---------------
         drift = 0.5 + 0.5 * math.sin(self._phase)
-        swell = 0.42 + 0.5 * self._level + 0.08 * drift
+        swell = 0.42 + 0.5 * self._drawn + 0.08 * drift
         radius = self.DISC_RADIUS + (self.MAX_GLOW_RADIUS - self.DISC_RADIUS) * swell
 
         glow = QRadialGradient(QPointF(cx, cy), radius)
         core = QColor(INDIGO_LIGHT)
-        core.setAlphaF(0.55 + 0.4 * self._level)
+        core.setAlphaF(0.55 + 0.4 * self._drawn)
         mid = QColor(INDIGO)
-        mid.setAlphaF(0.30 + 0.30 * self._level)
+        mid.setAlphaF(0.30 + 0.30 * self._drawn)
         edge = QColor(INDIGO_DARK)
         edge.setAlphaF(0.0)
         glow.setColorAt(0.0, core)
@@ -269,7 +286,7 @@ class WaveformDisplay(RecordingDisplay):
 
     def set_level(self, level: float) -> None:
         super().set_level(level)
-        self._history.append(self._level)
+        self._history.append(self._drawn)
         del self._history[: -self.NUM_BARS]
 
     def preferred_size(self) -> QSize:
@@ -327,62 +344,110 @@ class WaveformDisplay(RecordingDisplay):
 
 
 class IslandDisplay(RecordingDisplay):
-    """A compact near-black pill that breathes with the voice."""
+    """A compact near-black pill with a live wave where the gap used to be.
+
+    The pill holds its shape. Sizing it from the level meant every syllable
+    resized the whole badge, which read as flicker rather than as listening —
+    the voice belongs in the wave, not in the outline.
+    """
 
     style_id = "island"
 
     WIDTH = 260
     HEIGHT = 66
-    MIN_PILL_W = 170
+    PILL_W = 252
     PILL_H = 42
     DOT = 10
+    #: The wave sits between the status text and the timer.
+    NUM_BARS = 14
+    BAR_W = 3
+    BAR_GAP = 2
+    BAR_MIN = 3
+    BAR_MAX = 20
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        # A history, so the shape of what was said scrolls through the wave
+        # instead of all the bars wobbling together in place.
+        self._history = [0.0] * self.NUM_BARS
+
+    def set_level(self, level: float) -> None:
+        super().set_level(level)
+        self._history.append(self._drawn)
+        del self._history[: -self.NUM_BARS]
 
     def preferred_size(self) -> QSize:
         return QSize(self.WIDTH, self.HEIGHT)
+
+    def _pill_rect(self) -> QRectF:
+        """The pill's outline. Breathes by a pixel; never by the level."""
+        breathe = 0.5 + 0.5 * math.sin(self._phase * 0.8)
+        height = self.PILL_H + 1.5 * breathe
+        return QRectF(
+            (self.WIDTH - self.PILL_W) / 2,
+            (self.HEIGHT - height) / 2,
+            float(self.PILL_W),
+            height,
+        )
 
     def paintEvent(self, _event) -> None:  # noqa: N802
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        breathe = 0.5 + 0.5 * math.sin(self._phase * 0.8)
-        width = self.MIN_PILL_W + (self.WIDTH - self.MIN_PILL_W) * (
-            0.25 * breathe + 0.75 * self._level
-        )
-        height = self.PILL_H + 4 * self._level
-        rect = QRectF(
-            (self.width() - width) / 2,
-            (self.height() - height) / 2,
-            width,
-            height,
-        )
+        rect = self._pill_rect()
         path = QPainterPath()
-        path.addRoundedRect(rect, height / 2, height / 2)
+        path.addRoundedRect(rect, rect.height() / 2, rect.height() / 2)
         painter.fillPath(path, _ISLAND_BG)
 
         # The recording dot is red: the one deliberate exception to indigo.
         dot_colour = QColor(ISLAND_DOT_RED if self._state == "recording" else INDIGO_LIGHT)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(dot_colour)
-        dot_x = rect.left() + 16
+        dot_x = rect.left() + 14
         painter.drawEllipse(
             QRectF(dot_x, rect.center().y() - self.DOT / 2, self.DOT, self.DOT)
         )
 
+        text_left = dot_x + self.DOT + 7
         painter.setPen(_TEXT)
         painter.setFont(self._font(10, bold=True))
         painter.drawText(
-            QRectF(dot_x + self.DOT + 8, rect.top(), rect.width() - 90, rect.height()),
+            QRectF(text_left, rect.top(), 78, rect.height()),
             int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
             self._status_text(),
         )
+
         painter.setPen(_DIM_TEXT)
         painter.setFont(self._font(9))
+        timer_rect = QRectF(rect.right() - 54, rect.top(), 40, rect.height())
         painter.drawText(
-            QRectF(rect.right() - 62, rect.top(), 46, rect.height()),
+            timer_rect,
             int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter),
             self.elapsed_text,
         )
+
+        self._paint_wave(painter, text_left + 80, timer_rect.left() - 8, rect.center().y())
         painter.end()
+
+    def _paint_wave(self, painter, left: float, right: float, mid_y: float) -> None:
+        """Live bars in the space between the status text and the timer."""
+        span = right - left
+        if span <= 0:
+            return
+        total = self.NUM_BARS * (self.BAR_W + self.BAR_GAP) - self.BAR_GAP
+        x = left + max(0.0, (span - total) / 2)
+        painter.setPen(Qt.PenStyle.NoPen)
+        for value in self._history[-self.NUM_BARS:]:
+            height = self.BAR_MIN + value * (self.BAR_MAX - self.BAR_MIN)
+            colour = QColor(INDIGO_LIGHT)
+            colour.setAlphaF(0.45 + 0.55 * value)
+            painter.setBrush(colour)
+            painter.drawRoundedRect(
+                QRectF(x, mid_y - height / 2, float(self.BAR_W), height),
+                self.BAR_W / 2,
+                self.BAR_W / 2,
+            )
+            x += self.BAR_W + self.BAR_GAP
 
 
 _BUILDERS: dict[str, type[RecordingDisplay]] = {
