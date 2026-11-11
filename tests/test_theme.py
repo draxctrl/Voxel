@@ -309,3 +309,62 @@ class TestSwitchesDoNotPaintTheirOwnBackground:
         assert found == LIGHT["card"].lower(), (
             f"the switch painted {found} over its card at x={sliver_x}"
         )
+
+
+class TestTheSwitchHasNoNativeIndicator:
+    """IOSSwitch draws its own pill. Qt also draws a QCheckBox indicator
+    underneath it, and its border shows as an outlined box around the pill —
+    which is what makes a row of 'off' switches look wrong."""
+
+    def test_the_indicator_is_styled_away(self, qapp):
+        from src.ui_pyqt6.theme import IOSSwitch
+        qss = IOSSwitch().styleSheet()
+        for rule in ("border: none", "background: transparent", "image: none"):
+            assert rule in qss, f"the indicator is still drawn: {rule!r} missing"
+
+    # There is deliberately no rendered test here. The native indicator is
+    # drawn by the platform style, and pytest runs on the offscreen platform,
+    # whose style does not draw it — a pixel test would pass while the bug was
+    # live on Windows. The stylesheet assertion above is the honest check; the
+    # visual proof is a real-platform render.
+
+
+class TestTheDropdownOpensFromItsField:
+    """Style A: the list is the field growing downward — same width, flush
+    against its bottom edge, and it never spills outside the window."""
+
+    def _combo(self):
+        from src.ui_pyqt6.theme import ArrowComboBox
+        combo = ArrowComboBox()
+        combo.addItems([
+            "Hold to talk",
+            "VoiceWave Microphone (EaseUS Virtual Device) with a very long name",
+        ])
+        combo.setFixedWidth(200)
+        return combo
+
+    def test_the_popup_is_never_wider_than_the_field(self, qapp):
+        combo = self._combo()
+        combo.show()
+        combo.showPopup()
+        try:
+            assert combo.view().maximumWidth() == combo.width()
+            assert combo.view().window().width() <= combo.width() + 2, (
+                "the popup is wider than the field, so it hangs outside the window"
+            )
+        finally:
+            combo.hidePopup()
+
+    def test_the_popup_window_is_transparent_so_its_corners_can_round(self, qapp):
+        from PyQt6.QtCore import Qt
+        combo = self._combo()
+        assert combo.view().window().testAttribute(
+            Qt.WidgetAttribute.WA_TranslucentBackground
+        ), "the popup window is opaque, so a border-radius leaves black corners"
+
+    def test_the_list_is_joined_to_the_bottom_of_the_field(self):
+        from src.ui_pyqt6.theme import build_qss, DARK
+        block = build_qss(DARK).split("QComboBox QAbstractItemView {")[1].split("}")[0]
+        assert "border-top: none" in block
+        assert "border-top-left-radius: 0px" in block
+        assert "border-bottom-left-radius: 10px" in block

@@ -63,31 +63,61 @@ class TestIOSSwitch:
 
 
 class TestArrowComboBoxPopup:
-    """The popup used to be resized to a text-derived width and repositioned,
-    which is why the dropdowns read as detached from their field."""
+    """Style A: the list opens from the field. It is exactly as wide as the
+    field, so it can never hang outside the window, and long names are elided
+    with the full text on hover rather than widening the popup."""
 
-    def test_popup_is_never_narrower_than_the_field(self, qapp):
+    def test_popup_matches_the_field_width_exactly(self, qapp):
         c = ArrowComboBox()
         c.addItems(["a", "b"])
         c.resize(300, 36)
-        assert c._popup_width() >= 300
+        c.show()
+        c.showPopup()
+        try:
+            assert c.view().maximumWidth() == 300
+            assert c.view().minimumWidth() == 300
+        finally:
+            c.hidePopup()
 
-    def test_popup_grows_for_long_items(self, qapp):
+    def test_a_long_item_does_not_widen_the_popup(self, qapp):
+        from PyQt6.QtCore import Qt
         c = ArrowComboBox()
-        c.addItem("a" * 120)
+        c.addItem("VoiceWave Microphone (EaseUS Virtual Device)" * 3)
         c.resize(120, 36)
-        assert c._popup_width() > 120
+        c.show()
+        c.showPopup()
+        try:
+            # The combo has its own minimum width, so compare with what it
+            # actually ended up being, not with the requested 120.
+            assert c.view().maximumWidth() == c.width()
+            assert c.itemData(0, Qt.ItemDataRole.ToolTipRole) == c.itemText(0), (
+                "an elided name must still be readable on hover"
+            )
+        finally:
+            c.hidePopup()
 
-    def test_popup_width_is_capped_to_stay_usable(self, qapp):
+    def test_an_existing_tooltip_is_left_alone(self, qapp):
+        from PyQt6.QtCore import Qt
         c = ArrowComboBox()
-        c.addItem("x" * 4000)
-        c.resize(120, 36)
-        assert c._popup_width() <= 900
+        c.addItem("Built-in microphone")
+        c.setItemData(0, "The one in the lid", Qt.ItemDataRole.ToolTipRole)
+        c.resize(200, 36)
+        c.show()
+        c.showPopup()
+        try:
+            assert c.itemData(0, Qt.ItemDataRole.ToolTipRole) == "The one in the lid"
+        finally:
+            c.hidePopup()
 
-    def test_empty_combo_still_reports_the_field_width(self, qapp):
+    def test_an_empty_combo_still_opens(self, qapp):
         c = ArrowComboBox()
         c.resize(240, 36)
-        assert c._popup_width() >= 240
+        c.show()
+        c.showPopup()
+        try:
+            assert c.view().maximumWidth() == 240
+        finally:
+            c.hidePopup()
 
 
 class TestSwitchFollowsLiveTheme:

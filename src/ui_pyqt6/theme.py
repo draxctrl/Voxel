@@ -3,7 +3,7 @@ theme.py - Shared UI theme constants, stylesheet, and reusable widgets for Voxel
 """
 import logging
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QPoint
 from PyQt6.QtGui import QPainter, QPen, QColor
 from PyQt6.QtWidgets import QComboBox, QCheckBox, QWidget
 
@@ -271,22 +271,28 @@ QComboBox::down-arrow {{
     height: 0px;
 }}
 
-/* Popup matches the field it belongs to: same radius, same border, same fill. */
+/* The list is the field opening downward, not a box floating near it: same
+   width, flush against the field's bottom edge, square where they meet and
+   rounded where the field would have been. */
 QComboBox QAbstractItemView {{
-    background-color: {p['card']};
+    background-color: {p['input_bg']};
     color: {p['text']};
     border: 1px solid {p['separator']};
-    border-radius: 10px;
+    border-top: none;
+    border-top-left-radius: 0px;
+    border-top-right-radius: 0px;
+    border-bottom-left-radius: 10px;
+    border-bottom-right-radius: 10px;
     selection-background-color: {p['accent']};
     selection-color: #FFFFFF;
     outline: none;
-    padding: 4px;
+    padding: 2px 0px 4px 0px;
 }}
 
 QComboBox QAbstractItemView::item {{
-    padding: 6px 10px;
+    padding: 8px 11px;
     min-height: 24px;
-    border-radius: 6px;
+    border: none;
 }}
 
 QComboBox QAbstractItemView::item:hover,
@@ -519,26 +525,38 @@ def apply_theme(app, theme_name: str | None = None) -> str:
 # Reusable widgets
 # ---------------------------------------------------------------------------
 class ArrowComboBox(QComboBox):
-    """QComboBox that draws a visible chevron arrow and has a wide popup."""
+    """A combo whose list opens *from* the field rather than beside it.
 
-    #: Beyond this the popup stops being a dropdown and starts being a wall.
-    MAX_POPUP_WIDTH = 900
-    #: Room for the item padding, the checkmark column and any icon.
-    ITEM_CHROME = 56
+    The list is exactly as wide as the field and sits flush against its
+    bottom edge, so the two read as one control and the popup can never hang
+    outside the window. Items wider than the field are elided by the view and
+    carry their full text as a tooltip, so no device name is lost.
+    """
 
-    def _popup_width(self) -> int:
-        """How wide the popup should be: at least the field, never absurd.
-
-        The old version sized the popup from item text alone and then moved and
-        resized its top-level window, so it floated free of the control it
-        belonged to. Qt already aligns the popup to the field — it just needs
-        to be told a sensible width.
-        """
-        fm = self.fontMetrics()
-        widest = 0
-        for i in range(self.count()):
-            widest = max(widest, fm.horizontalAdvance(self.itemText(i)))
-        return min(max(self.width(), widest + self.ITEM_CHROME), self.MAX_POPUP_WIDTH)
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        # The popup lives in its own top-level window. Unless that window is
+        # transparent, the rounded corners in the stylesheet are drawn inside
+        # an opaque black square — which is exactly what made the old dropdown
+        # look like a separate floating box. This must be set before the popup
+        # is shown for the first time.
+        popup = self.view().window()
+        popup.setWindowFlags(
+            popup.windowFlags()
+            | Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.NoDropShadowWindowHint
+        )
+        popup.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        # Scoped to the container by name. An unscoped rule here cascades into
+        # the list inside it and makes the list transparent too, so the card
+        # behind shows through the dropdown.
+        popup.setObjectName("combo_popup")
+        popup.setStyleSheet(
+            "QFrame#combo_popup { background: transparent; border: none; }"
+        )
+        # Right-elide, so a name is cut at its end rather than through its
+        # middle; the full name is on the tooltip.
+        self.view().setTextElideMode(Qt.TextElideMode.ElideRight)
 
     def wheelEvent(self, event):  # noqa: N802
         """Scroll the page, never retune the setting under the pointer.
@@ -554,10 +572,22 @@ class ArrowComboBox(QComboBox):
             event.ignore()
 
     def showPopup(self):  # noqa: N802
-        self.view().setMinimumWidth(self._popup_width())
-        # Deliberately no resize/move of the popup window: that is what made
-        # the dropdown look detached from its field.
+        view = self.view()
+        view.setMinimumWidth(self.width())
+        view.setMaximumWidth(self.width())
+        # A name too long for the field is elided in the list, so give it back
+        # on hover rather than widening the popup past the window edge.
+        for i in range(self.count()):
+            if not self.itemData(i, Qt.ItemDataRole.ToolTipRole):
+                self.setItemData(i, self.itemText(i), Qt.ItemDataRole.ToolTipRole)
         super().showPopup()
+        # Clamping the list is not enough: Qt sizes the popup's own top-level
+        # window from the widest item, so a long device name leaves an 800px
+        # window hanging outside the app. Resize the window too, then pin it
+        # to the field's bottom edge so the two read as one control.
+        popup = view.window()
+        popup.resize(self.width(), popup.height())
+        popup.move(self.mapToGlobal(QPoint(0, self.height())))
 
     def paintEvent(self, event):
         # A fixed-width combo in a settings row is narrower than a long device
@@ -638,8 +668,15 @@ class IOSSwitch(QCheckBox):
         # mode rendered dark pills.
         self._palette_tokens: dict[str, str] | None = None
         # The native indicator is hidden; we draw the pill ourselves.
+        # Qt draws its own indicator under our pill, and its border shows as
+        # an outlined box around the pill. Keep the indicator's size (it
+        # reserves the room the pill is painted into) but strip everything
+        # that would be drawn.
         self.setStyleSheet(
-            f"QCheckBox::indicator {{ width: {self.TRACK_W}px; height: {self.TRACK_H}px; }}"
+            "QCheckBox::indicator {"
+            f" width: {self.TRACK_W}px; height: {self.TRACK_H}px;"
+            " border: none; background: transparent; image: none;"
+            "}"
         )
 
     def set_palette(self, palette: dict[str, str]) -> None:
