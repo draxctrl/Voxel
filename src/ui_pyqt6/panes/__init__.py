@@ -84,7 +84,7 @@ _REGISTRY: dict[str, str | None] = {
     "shortcuts": "shortcuts:ShortcutsPane",
     "appearance": "appearance:AppearancePane",
     "history": "history:HistoryPane",
-    "stats": None,
+    "stats": "stats:StatsPane",
     "general": "general:GeneralPane",
     "about": "about:AboutPane",
 }
