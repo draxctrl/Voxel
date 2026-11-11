@@ -13,9 +13,13 @@ LINKS = {
     "Report a problem": "https://github.com/draxctrl/Voxel/issues",
     # The link the old settings window already used.
     "Support this project": "https://paypal.me/draxctrl",
+    "Read the licence": "https://www.gnu.org/licenses/gpl-3.0.html",
 }
 
-LICENCE = "MIT License - free to use, change and share."
+LICENCE = (
+    "GNU General Public License v3. Free to use and to change; if you "
+    "share a changed version, share your changes too."
+)
 
 
 class AboutPane(Pane):

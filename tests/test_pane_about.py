@@ -13,7 +13,17 @@ class TestWhatAboutTells:
         assert pane.version_text().strip() != ""
 
     def test_it_names_the_licence(self, qapp, ctx):
-        assert "MIT" in AboutPane(ctx).licence_text()
+        text = AboutPane(ctx).licence_text()
+        assert "GPL" in text or "General Public" in text
+
+    def test_it_does_not_still_claim_mit(self, qapp, ctx):
+        """Voxel was MIT. Telling a user it still is would be telling them
+        they may close the source, which this licence does not allow."""
+        assert "MIT" not in AboutPane(ctx).licence_text()
+
+    def test_it_says_what_the_licence_means_in_plain_words(self, qapp, ctx):
+        text = AboutPane(ctx).licence_text().lower()
+        assert "share" in text or "changes" in text
 
     def test_it_links_to_the_project_and_to_support(self, qapp, ctx):
         links = AboutPane(ctx).links()

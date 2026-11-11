@@ -11,7 +11,7 @@
 [![Windows](https://img.shields.io/badge/Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white)](../../releases)
 [![macOS](https://img.shields.io/badge/macOS-000000?style=for-the-badge&logo=apple&logoColor=white)](#-install-macos)
 [![Python](https://img.shields.io/badge/Python_3.13+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
-[![License: MIT](https://img.shields.io/badge/License-MIT-6366f1?style=for-the-badge)](LICENSE)
+[![License: GPL v3](https://img.shields.io/badge/License-GPL_v3-6366f1?style=for-the-badge)](LICENSE)
 
 <br>
 
@@ -235,6 +235,20 @@ If Voxel saves you time, consider supporting development:
 
 [![PayPal](https://img.shields.io/badge/PayPal-Support_Voxel-6366f1?style=for-the-badge&logo=paypal&logoColor=white)](https://paypal.me/draxctrl)
 
-MIT License
-
 </div>
+
+## 📄 Licence
+
+Voxel is released under the **GNU General Public License v3.0** - see
+[LICENSE](LICENSE).
+
+In plain words: you are free to use Voxel, read its source and change it.
+If you share a changed version, you have to share your changes under the
+same licence. Nobody can take this work, close the source and sell it.
+
+Voxel is built on PyQt6, which is itself GPL v3, so this is also the
+licence the project is required to use.
+
+Bundled third-party work keeps its own licence: Phosphor Icons (MIT),
+Inter (SIL Open Font License), and the flag artwork under
+`src/assets/flags/`.
