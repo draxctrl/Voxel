@@ -25,31 +25,75 @@ def qapp():
     yield app
 
 
-class TestPaletteTokens:
-    def test_both_palettes_define_the_same_tokens(self):
+def _luminance(hex_colour: str) -> float:
+    """WCAG relative luminance of a #rrggbb string."""
+    h = hex_colour.lstrip("#")
+    parts = [int(h[i:i + 2], 16) / 255 for i in (0, 2, 4)]
+    linear = [c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+              for c in parts]
+    r, g, b = linear
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def _contrast(fg: str, bg: str) -> float:
+    a, b = _luminance(fg), _luminance(bg)
+    lighter, darker = max(a, b), min(a, b)
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+class TestTheDarkSurfacesAreTheOnesTheDesignFixes:
+    def test_the_rail_is_darker_than_the_pane(self):
+        assert DARK["rail"] == "#16171a"
+        assert DARK["pane"] == "#1e1f23"
+        assert DARK["row"] == "#2a2c32"
+        assert DARK["row_border"] == "#32343b"
+
+    def test_the_text_colours_are_the_ones_the_design_fixes(self):
+        assert DARK["muted"] == "#9b9ca5"
+        assert DARK["faint"] == "#6d6f78"
+
+
+class TestBothPalettesDefineEveryKey:
+    def test_light_and_dark_have_the_same_keys(self):
         assert set(LIGHT) == set(DARK)
 
-    def test_light_palette_matches_the_spec(self):
-        assert LIGHT["bg"] == "#F2F2F7"
-        assert LIGHT["card"] == "#FFFFFF"
-        assert LIGHT["separator"] == "#D6D6DA"
-        assert LIGHT["text"] == "#000000"
-        assert LIGHT["secondary"] == "#8E8E93"
-        assert LIGHT["switch_off"] == "#E9E9EB"
+    def test_every_sidebar_key_exists(self):
+        for key in ("rail", "rail_text", "rail_text_active", "rail_active_bg",
+                    "pane", "row", "row_border", "muted", "faint"):
+            assert key in DARK and key in LIGHT, key
 
-    def test_dark_palette_matches_the_spec(self):
-        assert DARK["bg"] == "#000000"
-        assert DARK["card"] == "#1C1C1E"
-        assert DARK["separator"] == "#2E2E31"
-        assert DARK["text"] == "#FFFFFF"
-        assert DARK["secondary"] == "#8E8E93"
-        assert DARK["switch_off"] == "#39393D"
 
+class TestTextStaysReadableOnEverySurface:
+    @pytest.mark.parametrize("palette", [LIGHT, DARK], ids=["light", "dark"])
+    @pytest.mark.parametrize("fg,bg", [("text", "pane"), ("text", "row"),
+                                       ("muted", "row"), ("rail_text", "rail"),
+                                       ("rail_text_active", "rail_active_bg")])
+    def test_contrast_is_at_least_4_5_to_1(self, palette, fg, bg):
+        ratio = _contrast(palette[fg], palette[bg])
+        assert ratio >= 4.5, f"{fg} on {bg} is only {ratio:.2f}:1"
+
+
+class TestTheLegacySurfacesFollowTheNewDesign:
+    """ArrowComboBox and IOSSwitch read `card`, `input_bg` and `separator`.
+    If those still hold the old iOS values, every control the new panes
+    reuse sits in a differently-coloured hole."""
+
+    def test_the_card_colour_is_the_new_row_colour(self):
+        for p in (LIGHT, DARK):
+            assert p["card"] == p["row"]
+            assert p["input_bg"] == p["row"]
+            assert p["separator"] == p["row_border"]
+            assert p["bg"] == p["pane"]
+            assert p["secondary"] == p["muted"]
+
+
+class TestTheAccentIsVoxelIndigo:
     def test_accent_is_voxel_indigo_in_both_palettes(self):
         """Never iOS blue, and switches are never Apple green."""
         for p in (LIGHT, DARK):
             assert p["accent"] == "#6366f1"
-            assert p["accent"] != "#007AFF"
+            assert p["accent_hover"] == "#818cf8"
+            assert p["accent_pressed"] == "#4f46e5"
             assert p["switch_off"] != "#34C759"
 
 
@@ -185,7 +229,8 @@ class TestApplyTheme:
 #: Colours that only ever belong to a dark UI. If one of these survives in a
 #: widget's own stylesheet after switching to light, that widget is stranded.
 _DARK_ONLY = (
-    "#1C1C1E", "#2E2E31", "#39393D", "#48484A",   # dark palette
+    "#16171a", "#1e1f23", "#2a2c32", "#32343b",   # dark palette
+    "#1C1C1E", "#2E2E31", "#39393D", "#48484A",   # previous dark palette
     "#1a1a1a", "#2a2a2a", "#0f0f0f", "#111111",   # legacy flat-dark palette
     "#e8e8e8", "#777777", "#333", "#1e1e3e",      # legacy literals
 )

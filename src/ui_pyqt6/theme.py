@@ -22,42 +22,72 @@ ACCENT_INDIGO = "#6366f1"
 ACCENT_INDIGO_HOVER = "#818cf8"
 ACCENT_INDIGO_PRESSED = "#4f46e5"
 
+#: The sidebar design's surfaces. Four of them, from back to front:
+#: the rail (darkest), the pane it sits beside, the rows on that pane, and
+#: the hairline between rows. The legacy iOS keys below them are aliases
+#: onto the same colours, so ArrowComboBox and IOSSwitch — the two widgets
+#: that outlived the old settings page — sit on the new surfaces instead of
+#: cutting differently-coloured holes in them.
 LIGHT: dict[str, str] = {
-    "bg": "#F2F2F7",
-    "card": "#FFFFFF",
-    "card_alt": "#FAFAFC",
-    "separator": "#D6D6DA",
-    "text": "#000000",
-    "secondary": "#8E8E93",
+    # sidebar design
+    "rail": "#ececf0",
+    "rail_text": "#4a4b53",
+    "rail_text_active": "#16171a",
+    "rail_active_bg": "#dcdce4",
+    "pane": "#f7f7fa",
+    "row": "#ffffff",
+    "row_border": "#dddde3",
+    "muted": "#6b6c75",
+    "faint": "#83858f",
+    # legacy names, pointed at the surfaces above
+    "bg": "#f7f7fa",
+    "card": "#ffffff",
+    "card_alt": "#f2f2f6",
+    "separator": "#dddde3",
+    "text": "#101114",
+    "secondary": "#6b6c75",
+    "input_bg": "#ffffff",
+    # the rest
     "accent": ACCENT_INDIGO,
     "accent_hover": ACCENT_INDIGO_HOVER,
     "accent_pressed": ACCENT_INDIGO_PRESSED,
-    "switch_off": "#E9E9EB",
-    "input_bg": "#FFFFFF",
+    "switch_off": "#e3e3e9",
     "success": "#22c55e",
     "error": "#ef4444",
     "warning": "#f59e0b",
-    "scrollbar": "#C7C7CC",
-    "scrollbar_hover": "#A1A1A6",
+    "scrollbar": "#c9c9d1",
+    "scrollbar_hover": "#a9a9b4",
 }
 
 DARK: dict[str, str] = {
-    "bg": "#000000",
-    "card": "#1C1C1E",
-    "card_alt": "#2C2C2E",
-    "separator": "#2E2E31",
-    "text": "#FFFFFF",
-    "secondary": "#8E8E93",
+    # sidebar design
+    "rail": "#16171a",
+    "rail_text": "#b9bac2",
+    "rail_text_active": "#ffffff",
+    "rail_active_bg": "#2b2e36",
+    "pane": "#1e1f23",
+    "row": "#2a2c32",
+    "row_border": "#32343b",
+    "muted": "#9b9ca5",
+    "faint": "#6d6f78",
+    # legacy names, pointed at the surfaces above
+    "bg": "#1e1f23",
+    "card": "#2a2c32",
+    "card_alt": "#32343b",
+    "separator": "#32343b",
+    "text": "#ffffff",
+    "secondary": "#9b9ca5",
+    "input_bg": "#2a2c32",
+    # the rest
     "accent": ACCENT_INDIGO,
     "accent_hover": ACCENT_INDIGO_HOVER,
     "accent_pressed": ACCENT_INDIGO_PRESSED,
-    "switch_off": "#39393D",
-    "input_bg": "#1C1C1E",
+    "switch_off": "#3a3d45",
     "success": "#22c55e",
     "error": "#ef4444",
     "warning": "#f59e0b",
-    "scrollbar": "#48484A",
-    "scrollbar_hover": "#636366",
+    "scrollbar": "#3f424a",
+    "scrollbar_hover": "#52555e",
 }
 
 _THEMES = {"light": LIGHT, "dark": DARK}
