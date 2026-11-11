@@ -254,3 +254,26 @@ class TestLegacyConstantsRemoved:
         import src.ui_pyqt6.theme as t
         for name in ("BG", "CARD", "BORDER", "INPUT_BG", "TEXT", "SUBTLE", "QSS"):
             assert not hasattr(t, name), f"{name} is a leftover flat-dark constant"
+
+
+class TestGroupedCardStyling:
+    """The grouped cards are styled from the palette like everything else."""
+
+    def test_card_rule_uses_the_palette_card_colour(self):
+        from src.ui_pyqt6.theme import build_qss, palette_for
+        for name in ("light", "dark"):
+            p = palette_for(name)
+            qss = build_qss(p)
+            assert f"QFrame#group_card" in qss
+            assert f"background-color: {p['card']}" in qss
+
+    def test_hairline_uses_the_separator_colour(self):
+        from src.ui_pyqt6.theme import build_qss, palette_for
+        for name in ("light", "dark"):
+            p = palette_for(name)
+            assert f"background-color: {p['separator']}" in build_qss(p)
+
+    def test_rows_opt_out_of_the_window_background(self):
+        """A row is a bare QWidget: without this it paints over its own card."""
+        from src.ui_pyqt6.theme import build_qss, LIGHT
+        assert "QWidget#settings_row {\n    background: transparent;" in build_qss(LIGHT)

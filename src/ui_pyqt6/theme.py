@@ -119,6 +119,9 @@ def palette_for(name: str) -> dict[str, str]:
 SCROLLBAR_GUTTER = 4
 SCROLLBAR_THICKNESS = 8
 
+#: Corner radius of a grouped settings card, shared with ios_layout.
+CARD_RADIUS = 12
+
 FONT_STACK = '"Inter", "Segoe UI", system-ui, sans-serif'
 
 #: Loaded font family names, so repeated calls don't re-register the same file.
@@ -321,6 +324,57 @@ QFrame#divider {{
     max-height: 1px;
     min-height: 1px;
     border: none;
+}}
+
+/* --- iOS grouped cards ---------------------------------------------------
+   A row is a bare QWidget, and the QWidget rule above would paint the window
+   background straight over the card it sits in, so rows opt out explicitly. */
+QLabel#group_header {{
+    color: {p['secondary']};
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.6px;
+    background: transparent;
+}}
+
+QFrame#group_card {{
+    background-color: {p['card']};
+    border: none;
+    border-radius: {CARD_RADIUS}px;
+}}
+
+QWidget#settings_row {{
+    background: transparent;
+}}
+
+QFrame#row_separator {{
+    background: transparent;
+    border: none;
+}}
+
+QFrame#hairline {{
+    background-color: {p['separator']};
+    border: none;
+    max-height: 1px;
+    min-height: 1px;
+}}
+
+QLabel#row_title {{
+    color: {p['text']};
+    font-size: 13px;
+    background: transparent;
+}}
+
+QLabel#row_sub {{
+    color: {p['secondary']};
+    font-size: 11px;
+    background: transparent;
+}}
+
+QLabel#row_value {{
+    color: {p['secondary']};
+    font-size: 13px;
+    background: transparent;
 }}
 
 /* --- scrollbars: defined once, for every window --------------------------
