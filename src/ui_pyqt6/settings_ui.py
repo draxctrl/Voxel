@@ -32,6 +32,13 @@ from pynput import keyboard as pynput_keyboard
 # scrollbars and dropdowns drift apart.
 from src.ui_pyqt6.theme import ArrowComboBox, IOSSwitch, current_palette
 from src.ui_pyqt6.flags import flag_icon
+from src.ui_pyqt6.ios_layout import (
+    DisclosureRow,
+    GroupCard,
+    SettingsRow,
+    StackedRow,
+    section_header,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -174,176 +181,48 @@ class SettingsWindow(QWidget):
             self.setWindowIcon(QIcon(icon_path))
 
         root_layout = QVBoxLayout(self)
-        root_layout.setContentsMargins(28, 28, 28, 24)
+        root_layout.setContentsMargins(24, 24, 24, 20)
         root_layout.setSpacing(0)
 
-        # ── Header ──────────────────────────────────────────────────────
-        header_row = QHBoxLayout()
-
-        header_text = QVBoxLayout()
+        # -- Header -------------------------------------------------------
         title_lbl = QLabel("Voxel")
         title_lbl.setObjectName("app_title")
-        header_text.addWidget(title_lbl)
+        root_layout.addWidget(title_lbl)
 
         sub_lbl = QLabel("Voice dictation settings")
         sub_lbl.setObjectName("subtitle")
-        header_text.addWidget(sub_lbl)
-        header_row.addLayout(header_text, stretch=1)
+        root_layout.addWidget(sub_lbl)
 
-        # Header buttons
-        self._history_btn = QPushButton("History")
-        self._history_btn.clicked.connect(self._open_history)
-        header_row.addWidget(self._history_btn, 0, Qt.AlignmentFlag.AlignVCenter)
+        root_layout.addSpacing(18)
 
-        header_row.addSpacing(4)
+        # The groups live in their own column so a scroll area can be wrapped
+        # around them without disturbing the header, Save button or footer.
+        self._groups: dict[str, GroupCard] = {}
+        groups_col = QVBoxLayout()
+        groups_col.setContentsMargins(0, 0, 0, 0)
+        groups_col.setSpacing(0)
+        self._groups_layout = groups_col
 
-        self._stats_btn = QPushButton("Stats")
-        self._stats_btn.clicked.connect(self._open_stats)
-        header_row.addWidget(self._stats_btn, 0, Qt.AlignmentFlag.AlignVCenter)
+        # -- TRANSCRIPTION ------------------------------------------------
+        card = self._add_group("TRANSCRIPTION")
 
-        header_row.addSpacing(4)
-
-        self._help_btn = QLabel("?")
-        self._help_btn.setFixedSize(24, 24)
-        self._help_btn.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._help_btn.setToolTip("Help & FAQ")
-        self._help_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._help_btn.mousePressEvent = lambda e: self._show_help()
-        header_row.addWidget(self._help_btn, 0, Qt.AlignmentFlag.AlignVCenter)
-
-        root_layout.addLayout(header_row)
-
-        root_layout.addSpacing(16)
-
-        # Divider
-        divider = QFrame()
-        divider.setObjectName("divider")
-        divider.setFrameShape(QFrame.Shape.HLine)
-        root_layout.addWidget(divider)
-
-        root_layout.addSpacing(8)
-
-        # ── API Key ──────────────────────────────────────────────────────
-        self._add_section(root_layout, "API Key", "Your Groq API key for transcription")
-
-        key_row = QHBoxLayout()
-        key_row.setSpacing(8)
-
+        key_row = StackedRow("API Key", subtitle="Your Groq API key for transcription")
         self._api_key_edit = QLineEdit()
         self._api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self._api_key_edit.setText(self._config.get("api_key", ""))
-        self._api_key_edit.setPlaceholderText("gsk_…")
-        self._api_key_edit.setFixedHeight(36)
-        key_row.addWidget(self._api_key_edit, stretch=1)
-
+        self._api_key_edit.setPlaceholderText("gsk_...")
+        self._api_key_edit.setFixedHeight(34)
+        key_row.add_control(self._api_key_edit, stretch=1)
         if self._on_validate_key:
             verify_btn = QPushButton("Verify")
-            verify_btn.setFixedSize(72, 36)
+            verify_btn.setFixedSize(72, 34)
             verify_btn.clicked.connect(self._validate_key)
-            key_row.addWidget(verify_btn)
-
-        root_layout.addLayout(key_row)
-
+            key_row.add_control(verify_btn)
         self._status_label = QLabel("")
         self._status_label.setObjectName("status_label")
-        root_layout.addWidget(self._status_label)
-
-        root_layout.addSpacing(4)
-
-        # ── Hotkey ───────────────────────────────────────────────────────
-        self._add_section(root_layout, "Hotkey", "Click Record, then press your desired combo")
-
-        hotkey_row = QHBoxLayout()
-        hotkey_row.setSpacing(8)
-
-        self._hotkey_edit = QLineEdit()
-        self._hotkey_edit.setReadOnly(True)
-        self._hotkey_edit.setText(self._config.get("hotkey", "<ctrl>+<shift>+space"))
-        self._hotkey_edit.setFixedHeight(36)
-        hotkey_row.addWidget(self._hotkey_edit, stretch=1)
-
-        self._capture_btn = QPushButton("Record")
-        self._capture_btn.setFixedSize(80, 36)
-        self._capture_btn.clicked.connect(self._toggle_hotkey_capture)
-        hotkey_row.addWidget(self._capture_btn)
-
-        root_layout.addLayout(hotkey_row)
-
-        root_layout.addSpacing(4)
-
-        # ── Activation mode ──────────────────────────────────────────────
-        activation_sub = QLabel("Activation")
-        activation_sub.setObjectName("section_sub")
-        root_layout.addWidget(activation_sub)
-        root_layout.addSpacing(2)
-
-        self._activation_combo = ArrowComboBox()
-        self._activation_combo.setFixedHeight(36)
-        for label, value in (
-            ("Hold to talk", "hold"),
-            ("Press to start, press to stop", "toggle"),
-        ):
-            self._activation_combo.addItem(label, userData=value)
-        current_activation = self._config.get("activation_mode", "hold")
-        for i in range(self._activation_combo.count()):
-            if self._activation_combo.itemData(i) == current_activation:
-                self._activation_combo.setCurrentIndex(i)
-                break
-        self._activation_combo.setToolTip(
-            "Hold to talk: record while the hotkey is held.\n"
-            "Press to start, press to stop: tap once to begin, tap again to finish."
-        )
-        root_layout.addWidget(self._activation_combo)
-
-        root_layout.addSpacing(8)
-
-        # ── Dictation Mode ───────────────────────────────────────────────
-        self._profile_sub = self._add_section(
-            root_layout, "Dictation Mode", _MODE_SUBTITLE
-        )
-
-        profile_row = QHBoxLayout()
-        profile_row.setSpacing(8)
-
-        self._profile_combo = ArrowComboBox()
-        self._profile_combo.setFixedHeight(36)
-        self._populate_profiles()
-        profile_row.addWidget(self._profile_combo, stretch=1)
-
-        self._voice_cmd_btn = QPushButton("Voice Commands")
-        self._voice_cmd_btn.setFixedHeight(36)
-        # Width follows the label: a fixed width clipped it once the font changed.
-        self._voice_cmd_btn.setMinimumWidth(
-            self._voice_cmd_btn.fontMetrics().horizontalAdvance("Voice Commands") + 36
-        )
-        self._voice_cmd_btn.clicked.connect(self._show_voice_commands)
-        profile_row.addWidget(self._voice_cmd_btn)
-
-        root_layout.addLayout(profile_row)
-
-        root_layout.addSpacing(8)
-
-        # ── Microphone ────────────────────────────────────────────────────
-        self._add_section(root_layout, "Microphone", "Select your recording device")
-
-        self._mic_combo = ArrowComboBox()
-        self._mic_combo.setFixedHeight(36)
-        self._populate_mics()
-        root_layout.addWidget(self._mic_combo)
-
-        root_layout.addSpacing(8)
-
-        # ── Language + checkboxes row ────────────────────────────────────
-        options_row = QHBoxLayout()
-        options_row.setSpacing(16)
-
-        # Language column
-        lang_col = QVBoxLayout()
-        lang_col.setSpacing(4)
-        self._lang_title = QLabel("Language")
-        self._lang_title.setObjectName("section_title")
-        lang_col.setAlignment(Qt.AlignmentFlag.AlignTop)
-        lang_col.addWidget(self._lang_title)
+        self._status_label.setWordWrap(True)
+        key_row.add_below(self._status_label)
+        card.add_row(key_row)
 
         self._lang_combo = ArrowComboBox()
         _LANGUAGES = [
@@ -369,76 +248,166 @@ class SettingsWindow(QWidget):
                 self._lang_combo.addItem(icon, label, userData=code)
             else:
                 self._lang_combo.addItem(label, userData=code)
-        # Select current language
         current_lang = self._config.get("language", "en")
         for i in range(self._lang_combo.count()):
             if self._lang_combo.itemData(i) == current_lang:
                 self._lang_combo.setCurrentIndex(i)
                 break
-        self._lang_combo.setFixedHeight(36)
-        lang_col.addWidget(self._lang_combo)
-        lang_col.addStretch(1)
+        self._lang_combo.setFixedSize(QSize(200, 34))
+        card.add_row(SettingsRow("Language", control=self._lang_combo))
 
-        options_row.addLayout(lang_col, stretch=1)
+        self._profile_combo = ArrowComboBox()
+        self._profile_combo.setFixedSize(QSize(230, 34))
+        self._populate_profiles()
+        mode_row = SettingsRow(
+            "Dictation Mode", control=self._profile_combo, subtitle=_MODE_SUBTITLE
+        )
+        # _sync_offline_state rewrites this label, so it has to be the row's own.
+        self._profile_sub = mode_row.subtitle_label
+        card.add_row(mode_row)
 
-        # Checkboxes column
-        check_col = QVBoxLayout()
-        check_col.setSpacing(10)
-        check_col.setAlignment(Qt.AlignmentFlag.AlignTop)
+        voice_row = DisclosureRow("Voice Commands", subtitle="Spoken shortcuts you define")
+        voice_row.clicked.connect(self._show_voice_commands)
+        card.add_row(voice_row)
 
-        self._mute_check = IOSSwitch("Mute sounds")
-        self._mute_check.setChecked(self._config.get("mute_sound", False))
-        self._mute_check.setToolTip("Disable the chime sound that plays after you stop recording")
-        check_col.addWidget(self._mute_check)
-
-        self._autostart_check = IOSSwitch("Run at login")
-        self._autostart_check.setChecked(self._config.get("auto_start", False))
-        self._autostart_check.setToolTip("Automatically launch Voxel when Windows starts")
-        check_col.addWidget(self._autostart_check)
-
-        self._always_copy_check = IOSSwitch("Always copy to clipboard")
-        self._always_copy_check.setChecked(self._config.get("always_copy", False))
-        self._always_copy_check.setToolTip("Keep transcribed text on your clipboard after pasting\n(instead of restoring your previous clipboard)")
-        check_col.addWidget(self._always_copy_check)
-
-        self._clipboard_notice_check = IOSSwitch("Show clipboard notice")
-        self._clipboard_notice_check.setChecked(self._config.get("clipboard_notice", True))
-        self._clipboard_notice_check.setToolTip("Show a notification when text is copied to clipboard\ninstead of pasted (e.g. when desktop is focused)")
-        check_col.addWidget(self._clipboard_notice_check)
-
-        self._auto_profile_check = IOSSwitch("Auto-switch profile per app")
-        self._auto_profile_check.setChecked(self._config.get("auto_profile", False))
-        self._auto_profile_check.setToolTip("Automatically switch dictation mode based on the focused app.\nConfigure app mappings in the config file.")
-        check_col.addWidget(self._auto_profile_check)
-
-        self._offline_check = IOSSwitch("Offline mode")
+        self._offline_check = IOSSwitch()
         self._offline_check.setChecked(self._config.get("offline_mode", False))
-        self._offline_check.setToolTip("Use local Whisper model instead of Groq API.\nNo internet needed, but slower and no AI text cleanup.\nModel downloads on first use (~145MB for base).")
         # Offline transcription skips LLM cleanup entirely, so Dictation Mode has
         # no effect. Say so instead of leaving a control that quietly does nothing.
         self._offline_check.stateChanged.connect(self._sync_offline_state)
-        check_col.addWidget(self._offline_check)
+        card.add_row(self._switch_row(
+            "Offline mode",
+            self._offline_check,
+            "Use local Whisper model instead of Groq API.\n"
+            "No internet needed, but slower and no AI text cleanup.\n"
+            "Model downloads on first use (~145MB for base).",
+        ))
+
+        # -- RECORDING ----------------------------------------------------
+        card = self._add_group("RECORDING")
+
+        hotkey_row = StackedRow(
+            "Hotkey", subtitle="Click Record, then press your desired combo"
+        )
+        self._hotkey_edit = QLineEdit()
+        self._hotkey_edit.setReadOnly(True)
+        self._hotkey_edit.setText(self._config.get("hotkey", "<ctrl>+<shift>+space"))
+        self._hotkey_edit.setFixedHeight(34)
+        hotkey_row.add_control(self._hotkey_edit, stretch=1)
+        self._capture_btn = QPushButton("Record")
+        self._capture_btn.setFixedSize(80, 34)
+        self._capture_btn.clicked.connect(self._toggle_hotkey_capture)
+        hotkey_row.add_control(self._capture_btn)
+        card.add_row(hotkey_row)
+
+        self._activation_combo = ArrowComboBox()
+        self._activation_combo.setFixedSize(QSize(230, 34))
+        for label, value in (
+            ("Hold to talk", "hold"),
+            ("Press to start, press to stop", "toggle"),
+        ):
+            self._activation_combo.addItem(label, userData=value)
+        current_activation = self._config.get("activation_mode", "hold")
+        for i in range(self._activation_combo.count()):
+            if self._activation_combo.itemData(i) == current_activation:
+                self._activation_combo.setCurrentIndex(i)
+                break
+        activation_row = SettingsRow("Activation", control=self._activation_combo)
+        activation_row.setToolTip(
+            "Hold to talk: record while the hotkey is held.\n"
+            "Press to start, press to stop: tap once to begin, tap again to finish."
+        )
+        self._activation_combo.setToolTip(activation_row.toolTip())
+        card.add_row(activation_row)
+
+        self._mic_combo = ArrowComboBox()
+        self._mic_combo.setFixedSize(QSize(230, 34))
+        self._populate_mics()
+        card.add_row(SettingsRow("Microphone", control=self._mic_combo))
+
+        # -- BEHAVIOUR ----------------------------------------------------
+        card = self._add_group("BEHAVIOUR")
+
+        self._mute_check = IOSSwitch()
+        self._mute_check.setChecked(self._config.get("mute_sound", False))
+        card.add_row(self._switch_row(
+            "Mute sounds",
+            self._mute_check,
+            "Disable the chime sound that plays after you stop recording",
+        ))
+
+        self._autostart_check = IOSSwitch()
+        self._autostart_check.setChecked(self._config.get("auto_start", False))
+        card.add_row(self._switch_row(
+            "Run at login",
+            self._autostart_check,
+            "Automatically launch Voxel when Windows starts",
+        ))
+
+        self._always_copy_check = IOSSwitch()
+        self._always_copy_check.setChecked(self._config.get("always_copy", False))
+        card.add_row(self._switch_row(
+            "Always copy to clipboard",
+            self._always_copy_check,
+            "Keep transcribed text on your clipboard after pasting\n"
+            "(instead of restoring your previous clipboard)",
+        ))
+
+        self._clipboard_notice_check = IOSSwitch()
+        self._clipboard_notice_check.setChecked(self._config.get("clipboard_notice", True))
+        card.add_row(self._switch_row(
+            "Show clipboard notice",
+            self._clipboard_notice_check,
+            "Show a notification when text is copied to clipboard\n"
+            "instead of pasted (e.g. when desktop is focused)",
+        ))
+
+        self._auto_profile_check = IOSSwitch()
+        self._auto_profile_check.setChecked(self._config.get("auto_profile", False))
+        card.add_row(self._switch_row(
+            "Auto-switch mode per app",
+            self._auto_profile_check,
+            "Automatically switch dictation mode based on the focused app.\n"
+            "Configure app mappings in the config file.",
+        ))
+
+        # -- YOUR DATA ----------------------------------------------------
+        card = self._add_group("YOUR DATA")
+
+        history_row = DisclosureRow("History", subtitle="Everything you have dictated")
+        history_row.clicked.connect(self._open_history)
+        card.add_row(history_row)
+
+        stats_row = DisclosureRow("Stats", subtitle="Words, time saved, streaks")
+        stats_row.clicked.connect(self._open_stats)
+        card.add_row(stats_row)
+
+        help_row = DisclosureRow("Help & FAQ")
+        help_row.clicked.connect(self._show_help)
+        card.add_row(help_row)
+
+        root_layout.addLayout(groups_col)
+
         self._sync_offline_state()
 
-
-        options_row.addLayout(check_col, stretch=1)
-
-        root_layout.addLayout(options_row)
-
-        # ── Spacer ───────────────────────────────────────────────────────
+        # -- Spacer -------------------------------------------------------
         root_layout.addStretch(1)
 
-        # ── Save button ──────────────────────────────────────────────────
+        # -- Save button --------------------------------------------------
+        root_layout.addSpacing(16)
         self._save_btn = QPushButton("Save Settings")
         self._save_btn.setObjectName("save_btn")
         self._save_btn.clicked.connect(self._save)
         root_layout.addWidget(self._save_btn)
 
-        # ── Footer: support link + version ───────────────────────────────
+        # -- Footer: support link + version -------------------------------
         root_layout.addSpacing(8)
         footer_row = QHBoxLayout()
 
-        coffee_label = QLabel('<a href="https://paypal.me/draxctrl" style="font-size: 11px; text-decoration: none;">Support this project</a>')
+        coffee_label = QLabel(
+            '<a href="https://paypal.me/draxctrl" '
+            'style="font-size: 11px; text-decoration: none;">Support this project</a>'
+        )
         coffee_label.setOpenExternalLinks(True)
         footer_row.addWidget(coffee_label, 0, Qt.AlignmentFlag.AlignLeft)
 
@@ -453,23 +422,34 @@ class SettingsWindow(QWidget):
         # Inline styles for the few widgets the application stylesheet can't reach.
         self._restyle()
 
-
     # ------------------------------------------------------------------
-    # Helper: section header
+    # Group helpers
     # ------------------------------------------------------------------
 
-    def _add_section(self, layout: QVBoxLayout, title: str, subtitle: str) -> QLabel:
-        """Add a section header. Returns the subtitle label so callers can update it."""
-        t = QLabel(title)
-        t.setObjectName("section_title")
-        layout.addWidget(t)
+    def _add_group(self, title: str) -> GroupCard:
+        """Append an empty group card under its uppercase header."""
+        if self._groups:
+            self._groups_layout.addSpacing(18)
+        self._groups_layout.addWidget(section_header(title))
+        self._groups_layout.addSpacing(6)
+        card = GroupCard()
+        self._groups_layout.addWidget(card)
+        self._groups[title] = card
+        return card
 
-        s = QLabel(subtitle)
-        s.setObjectName("section_sub")
-        layout.addWidget(s)
+    @staticmethod
+    def _switch_row(title: str, switch: IOSSwitch, tooltip: str) -> SettingsRow:
+        """A switch row: the row carries the wording, the switch carries none.
 
-        layout.addSpacing(4)
-        return s
+        The switch's own label is left empty so the row title is the single
+        piece of text; the explanation moves to the row, which is what the user
+        hovers over.
+        """
+        switch.setFixedWidth(IOSSwitch.TRACK_W + 4)
+        row = SettingsRow(title, control=switch)
+        row.setToolTip(tooltip)
+        switch.setToolTip(tooltip)
+        return row
 
     # ------------------------------------------------------------------
     # Microphone enumeration
@@ -797,31 +777,12 @@ class SettingsWindow(QWidget):
     def _restyle(self) -> None:
         """Re-apply this window's own inline styles for the current palette.
 
-        Most chrome comes from the application stylesheet and updates by itself.
-        These few widgets carry inline styles, so without this they keep the
-        colours they were built with — a window opened after Windows switches to
-        light would show dark header buttons on a light background.
+        Almost all chrome now comes from the application stylesheet and follows
+        a theme change by itself. The version label is the one leftover that
+        carries an inline style, so without this it would keep the colour it
+        was built with.
         """
         p = current_palette()
-
-        small = (
-            f"background-color: {p['separator']}; color: {p['secondary']}; "
-            f"border-radius: 4px; font-size: 11px; "
-            f"padding: 3px 10px; min-height: 0; min-width: 0;"
-        )
-        hover = f"background-color: {p['accent']}; color: #FFFFFF;"
-        for btn in (self._history_btn, self._stats_btn):
-            btn.setStyleSheet(
-                f"QPushButton {{ {small} }} QPushButton:hover {{ {hover} }}"
-            )
-
-        self._help_btn.setStyleSheet(
-            f"QLabel {{ background-color: transparent; color: {p['accent']}; "
-            f"border: 1.5px solid {p['accent']}; border-radius: 12px; "
-            f"font-size: 13px; font-weight: bold; }}"
-            f"QLabel:hover {{ background-color: {p['card_alt']}; }}"
-        )
-
         self._version_label.setStyleSheet(f"color: {p['secondary']}; font-size: 11px;")
 
     def _sync_offline_state(self) -> None:

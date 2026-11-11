@@ -135,20 +135,114 @@ class TestMicListIdentity:
         assert window._config.get("mic_device_name") is None
 
 
-class TestLayoutFitsItsContent:
-    """Regressions the screenshots caught: Inter is wider than Segoe UI, and the
-    taller iOS switches stretched the column beside them."""
+class TestRowsFitTheirContent:
+    """Inter is wider than Segoe UI, and the row controls are fixed-width: a
+    title must never be squeezed out by the control beside it."""
 
-    def test_voice_commands_button_is_not_clipped(self, window):
-        btn = window._voice_cmd_btn
-        needed = btn.fontMetrics().horizontalAdvance(btn.text())
-        assert btn.width() >= needed + 16, (
-            f"button is {btn.width()}px but the label needs {needed}px"
-        )
-
-    def test_language_label_sits_just_above_its_dropdown(self, window):
-        """The label and its combo must read as one control, not drift apart."""
-        window.resize(540, 820)
+    def test_no_row_title_is_clipped(self, window):
+        from src.ui_pyqt6.ios_layout import SettingsRow
         window.show()
-        gap = window._lang_combo.y() - (window._lang_title.y() + window._lang_title.height())
-        assert 0 <= gap <= 24, f"Language label is {gap}px from its dropdown"
+        for row in window.findChildren(SettingsRow):
+            label = row.title_label
+            needed = label.fontMetrics().horizontalAdvance(label.text())
+            assert label.width() >= needed, (
+                f"{label.text()!r} has {label.width()}px but needs {needed}px"
+            )
+
+    def test_a_control_stays_inside_its_card(self, window):
+        window.show()
+        for name in ("_mic_combo", "_profile_combo", "_lang_combo", "_activation_combo"):
+            widget = getattr(window, name)
+            card = _card_of(widget)
+            right = widget.mapTo(card, widget.rect().topRight()).x()
+            assert right <= card.width(), f"{name} overflows its card by {right - card.width()}px"
+
+
+def _ancestor(widget, cls):
+    """Nearest ancestor of *widget* that is a *cls*, or None."""
+    node = widget.parent()
+    while node is not None:
+        if isinstance(node, cls):
+            return node
+        node = node.parent()
+    return None
+
+
+def _card_of(widget):
+    from src.ui_pyqt6.ios_layout import GroupCard
+    return _ancestor(widget, GroupCard)
+
+
+def _row_of(widget):
+    from src.ui_pyqt6.ios_layout import SettingsRow, StackedRow
+    return _ancestor(widget, SettingsRow) or _ancestor(widget, StackedRow)
+
+
+def _row_titled(window, title):
+    from src.ui_pyqt6.ios_layout import DisclosureRow
+    for row in window.findChildren(DisclosureRow):
+        if row.title_label.text() == title:
+            return row
+    raise AssertionError(f"no disclosure row titled {title!r}")
+
+
+class TestGroupedLayout:
+    def test_every_setting_lives_in_a_group(self, window):
+        assert set(window._groups) == {
+            "TRANSCRIPTION", "RECORDING", "BEHAVIOUR", "YOUR DATA",
+        }
+
+    def test_controls_are_inside_their_card(self, window):
+        assert _card_of(window._mic_combo) is window._groups["RECORDING"]
+        assert _card_of(window._activation_combo) is window._groups["RECORDING"]
+        assert _card_of(window._profile_combo) is window._groups["TRANSCRIPTION"]
+        assert _card_of(window._lang_combo) is window._groups["TRANSCRIPTION"]
+        assert _card_of(window._api_key_edit) is window._groups["TRANSCRIPTION"]
+        assert _card_of(window._mute_check) is window._groups["BEHAVIOUR"]
+        assert _card_of(window._autostart_check) is window._groups["BEHAVIOUR"]
+
+    def test_switch_rows_keep_their_explanation(self, window):
+        """The switch text moved to the row title; the tooltip must move too."""
+        assert "chime" in _row_of(window._mute_check).toolTip()
+        assert "Windows starts" in _row_of(window._autostart_check).toolTip()
+
+    def test_no_switch_carries_its_own_duplicate_label(self, window):
+        from src.ui_pyqt6.theme import IOSSwitch
+        for switch in window.findChildren(IOSSwitch):
+            assert switch.text() == ""
+
+    def test_every_switch_is_titled_by_its_row(self, window):
+        from src.ui_pyqt6.theme import IOSSwitch
+        for switch in window.findChildren(IOSSwitch):
+            row = _row_of(switch)
+            assert row is not None and row.title_label.text().strip()
+
+    def test_the_old_header_buttons_are_gone(self, window):
+        for attr in ("_history_btn", "_stats_btn", "_help_btn", "_voice_cmd_btn"):
+            assert not hasattr(window, attr)
+
+
+class TestDisclosureRowsAreWired:
+    def _window(self, tmp_path, **callbacks):
+        from src.ui_pyqt6.settings_ui import SettingsWindow
+        cfg = Config(config_path=str(tmp_path / "config.json"))
+        cfg.load()
+        return SettingsWindow(config=cfg, on_save=lambda: None, **callbacks)
+
+    def test_history_row_calls_the_history_callback(self, qapp, tmp_path):
+        seen = []
+        w = self._window(tmp_path, on_history=lambda: seen.append("history"))
+        _row_titled(w, "History").clicked.emit()
+        assert seen == ["history"]
+        w.deleteLater()
+
+    def test_stats_row_calls_the_stats_callback(self, qapp, tmp_path):
+        seen = []
+        w = self._window(tmp_path, on_stats=lambda: seen.append("stats"))
+        _row_titled(w, "Stats").clicked.emit()
+        assert seen == ["stats"]
+        w.deleteLater()
+
+    def test_help_and_voice_commands_rows_exist(self, window):
+        assert _row_titled(window, "Help & FAQ") is not None
+        assert _row_titled(window, "Voice Commands") is not None
