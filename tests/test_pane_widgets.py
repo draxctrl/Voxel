@@ -63,3 +63,54 @@ class TestAPaneDoesNotStretchItsRowsAcrossAWideWindow:
 
         # 980 window - 198 rail - 2x28 margins = 726 of usable pane.
         assert 600 <= CONTENT_MAX_WIDTH <= 726
+
+
+class TestEveryRowActuallyPaintsItsBackground:
+    """A plain QWidget ignores a stylesheet background unless it is a QFrame
+    or sets WA_StyledBackground, so a row can carry a perfectly correct
+    stylesheet and still render as bare text on the pane. Only pixels tell."""
+
+    def _rendered_corner(self, qapp, widget, palette):
+        """Render the row inside a parent, as it really lives.
+
+        A top-level widget paints its stylesheet background whatever class
+        it is; a child one only does so if it is a QFrame or sets
+        WA_StyledBackground. Rendering it unparented would pass on a row
+        that is invisible in the window.
+        """
+        from PyQt6.QtGui import QPixmap
+        from PyQt6.QtWidgets import QVBoxLayout, QWidget
+
+        host = QWidget()
+        host.setObjectName("host")
+        host.setStyleSheet("QWidget#host { background-color: %s; }" % palette["pane"])
+        layout = QVBoxLayout(host)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(widget)
+        widget.restyle(palette)
+        host.resize(600, 56)
+        host.show()
+        qapp.processEvents()
+        pixmap = QPixmap(host.size())
+        host.render(pixmap)
+        centre = widget.mapTo(host, widget.rect().center())
+        return pixmap.toImage().pixelColor(centre.x(), centre.y()).name().lower()
+
+    def test_a_switch_row_paints_the_row_colour(self, qapp):
+        from src.ui_pyqt6.panes.widgets import SwitchRow
+
+        p = palette_for("dark")
+        found = self._rendered_corner(qapp, SwitchRow("Label", "Description"), p)
+        assert found == p["row"].lower(), f"the row painted {found}, not {p['row']}"
+
+    def test_a_shortcut_row_paints_the_row_colour(self, qapp):
+        from src.ui_pyqt6.panes.shortcuts import _ShortcutRow
+
+        p = palette_for("dark")
+        found = self._rendered_corner(qapp, _ShortcutRow("Label", "Description"), p)
+        assert found == p["row"].lower(), f"the row painted {found}, not {p['row']}"
+
+    def test_a_choice_row_paints_the_row_colour(self, qapp):
+        p = palette_for("dark")
+        found = self._rendered_corner(qapp, ChoiceRow("x", "Title", "Subtitle"), p)
+        assert found == p["row"].lower(), f"the row painted {found}, not {p['row']}"
