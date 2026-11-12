@@ -97,6 +97,7 @@ class RecordingDisplay(QWidget):
         #: spikes; drawn straight, every syllable makes the badge jump.
         self._drawn = 0.0
         self._phase = 0.0
+        self._frames_since_bar = 0
         self._state = "recording"
         self.elapsed_text = ""
         self.mic_text = ""
@@ -107,10 +108,20 @@ class RecordingDisplay(QWidget):
 
     # -- inputs ---------------------------------------------------------
     #: How fast the drawn level chases the measured one, per frame. Rising
-    #: has to stay quick or the badge feels laggy; falling is slower, because
-    #: a gate slamming shut reads worse than one easing shut.
-    ATTACK = 0.30
-    RELEASE = 0.10
+    #: stays the quicker of the two, or the badge feels laggy; falling is
+    #: slower, because a gate slamming shut reads worse than one easing shut.
+    #: Both are gentle: at 60fps even the rise takes about a fifth of a
+    #: second, which is what makes the movement read as smooth rather than
+    #: as a reaction to every syllable.
+    ATTACK = 0.16
+    RELEASE = 0.055
+
+    #: How many animation frames one bar of a scrolling wave lasts. At 60fps
+    #: a bar every four frames is about fifteen a second, so a fourteen-bar
+    #: wave takes just under a second to cross. Pushing one per frame made
+    #: the whole wave scroll past four times a second, which is the single
+    #: thing that made the badge look frantic.
+    FRAMES_PER_BAR = 4
 
     def set_level(self, level: float) -> None:
         self._level = max(0.0, min(1.0, float(level)))
@@ -130,10 +141,29 @@ class RecordingDisplay(QWidget):
         self.mic_text = text
         self.update()
 
-    def advance(self, delta: float = 0.06) -> None:
-        """Move the idle animation on one frame."""
+    def advance(self, delta: float = 0.024) -> None:
+        """Move the idle animation on one frame.
+
+        Slow on purpose: the drift is meant to read as breathing, and at
+        60fps anything faster than a few seconds a cycle reads as a pulse.
+        """
         self._phase += delta
         self.update()
+
+    def _scroll_wave(self) -> None:
+        """Move the scrolling wave on, at most one bar every few frames.
+
+        Between pushes the newest bar holds the loudest level it has seen,
+        so slowing the scroll does not lose a syllable that happened to
+        fall between two bars.
+        """
+        self._frames_since_bar += 1
+        if self._frames_since_bar < self.FRAMES_PER_BAR:
+            self._history[-1] = max(self._history[-1], self._drawn)
+            return
+        self._frames_since_bar = 0
+        self._history.append(self._drawn)
+        del self._history[: -self.NUM_BARS]
 
     # -- geometry -------------------------------------------------------
     def preferred_size(self) -> QSize:
@@ -286,8 +316,7 @@ class WaveformDisplay(RecordingDisplay):
 
     def set_level(self, level: float) -> None:
         super().set_level(level)
-        self._history.append(self._drawn)
-        del self._history[: -self.NUM_BARS]
+        self._scroll_wave()
 
     def preferred_size(self) -> QSize:
         return QSize(self.WIDTH, self.HEIGHT)
@@ -373,8 +402,7 @@ class IslandDisplay(RecordingDisplay):
 
     def set_level(self, level: float) -> None:
         super().set_level(level)
-        self._history.append(self._drawn)
-        del self._history[: -self.NUM_BARS]
+        self._scroll_wave()
 
     def preferred_size(self) -> QSize:
         return QSize(self.WIDTH, self.HEIGHT)

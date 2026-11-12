@@ -224,3 +224,59 @@ class TestTheIslandHoldsItsShape:
         loud = QPixmap(island.size())
         island.render(loud)
         assert quiet.toImage() != loud.toImage(), "the wave does not react"
+
+
+class TestTheWaveMovesAtAReadableSpeed:
+    """The badge ran its animation at 60fps and pushed a new bar on every
+    frame, so the island's fourteen bars scrolled past in under a quarter of
+    a second. It read as a jittery, aggressive flicker rather than as
+    something listening to you."""
+
+    @staticmethod
+    def _frame_ms() -> int:
+        from src.ui_pyqt6.recording_overlay import _ANIMATION_INTERVAL_MS
+
+        return _ANIMATION_INTERVAL_MS
+
+    def test_a_quarter_second_of_speech_does_not_fill_the_whole_wave(self, qapp):
+        from src.ui_pyqt6.recording_styles import build_display
+
+        for style in ("island", "waveform"):
+            d = build_display(style)
+            frames = int(250 / self._frame_ms())
+            for _ in range(frames):
+                d.set_level(1.0)
+                d.advance()
+            raised = [v for v in d._history if v > 0.05]
+            assert len(raised) <= d.NUM_BARS / 2, (
+                "%s filled %d of its %d bars in a quarter second, so the wave "
+                "crosses the badge in well under a second"
+                % (style, len(raised), d.NUM_BARS)
+            )
+
+    def test_one_frame_of_sound_does_not_throw_the_bar_most_of_the_way_up(self, qapp):
+        from src.ui_pyqt6.recording_styles import build_display
+
+        d = build_display("island")
+        d.set_level(1.0)
+        assert d.drawn_level <= 0.2, (
+            "a single frame moved the drawn level to %.2f, which is what makes "
+            "every syllable snap" % d.drawn_level
+        )
+
+    def test_the_idle_drift_takes_seconds_to_come_round(self, qapp):
+        import math
+
+        from src.ui_pyqt6.recording_styles import build_display
+
+        d = build_display("orb")
+        start = d._phase
+        frames = 0
+        while d._phase - start < 2 * math.pi and frames < 10_000:
+            d.advance()
+            frames += 1
+        seconds = frames * self._frame_ms() / 1000
+        assert seconds >= 3.0, (
+            "the idle drift comes round every %.1fs, which reads as a pulse "
+            "rather than as breathing" % seconds
+        )
