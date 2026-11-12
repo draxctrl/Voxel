@@ -82,7 +82,7 @@ The result: you speak naturally, and clean text appears. **No editing needed.**
 - 🗣️ **Voice Commands** - say "sign off" → insert your signature template
 - 📊 **Statistics Dashboard** - track your usage and time saved
 - 🪄 **Auto-switch profile per app** - use "Professional" in Outlook, "Code" in VS Code
-- 💾 **Offline Mode** - use local Whisper model, no internet needed
+- 💾 **Offline Mode** - transcribes on your own machine, nothing leaves it. Included in the download; the first use fetches a model
 
 ### Polish
 - 🎨 **Light and dark themes** that follow your Windows setting
@@ -132,8 +132,18 @@ Groq's free tier has a limit on audio length per request. If you hit it, just **
 
 ### Option 1: Installer
 Download **`Voxel_Setup.exe`** from [📦 Releases](../../releases), run it, done.
+It installs for you alone, so Windows does not ask for an administrator.
 
-### Option 2: From source
+### Option 2: Portable
+Download **`Voxel-portable.zip`**, unzip it anywhere, and run `Voxel.exe`
+from inside the folder. Keep the folder together - the program is the
+folder, not just the .exe in it.
+
+> 🔒 Windows will warn you about both downloads, because they are not
+> code-signed. Click **More info**, then **Run anyway**. Signing costs a few
+> hundred a year and Voxel is free.
+
+### Option 3: From source
 ```bash
 git clone https://github.com/draxctrl/Voxel.git
 cd Voxel
@@ -176,6 +186,8 @@ sections in here instead.
 <img src="docs/screenshots/history.png" alt="History: everything you have dictated, searchable, inside the main window" width="760" />
 <br><br>
 <img src="docs/screenshots/appearance-light.png" alt="The same window in light mode" width="760" />
+<br><br>
+<img src="docs/screenshots/stats.png" alt="Stats: words dictated, time saved, and dictations this week" width="760" />
 </div>
 
 What changed in this release:
@@ -185,6 +197,7 @@ What changed in this release:
 - **Plain-language labels** - "Writing style" rather than "Dictation Mode".
 - **Light and dark**, following your Windows setting, or pinned to one.
 - **Settings apply the moment you change them.** There is no Save button.
+- **Offline transcription is in the download**, instead of needing the source.
 
 ---
 
