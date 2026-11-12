@@ -41,22 +41,26 @@ class TestTileArtwork:
         assert _difference(tight, flat) > 6, "the flat variant still has bars"
         assert _difference(full, tight) > 0.5, "tight is not drawn any heavier"
 
-    def test_the_bars_are_only_in_the_wide_variants(self):
-        """Measured where a bar is and the V is not: the outer sixth of the
-        tile. Empty there means the bars are gone."""
+    def test_the_small_frame_keeps_one_bar_and_drops_the_other(self):
+        """The outer bar survives so the tray still reads as the same logo;
+        the inner one goes, because at 16px it cannot be told from the V.
+        Measured in the two bands where each bar sits."""
         from tools.generate_icons import draw_tile
 
-        def left_edge_ink(variant: str) -> int:
+        def ink(variant: str, x0: int, x1: int) -> int:
             img = draw_tile(128, variant).convert("RGBA")
             return sum(
                 1
-                for y in range(40, 88)
-                for x in range(8, 24)
+                for y in range(48, 80)
+                for x in range(x0, x1)
                 if img.getpixel((x, y))[0] > 200
             )
 
-        assert left_edge_ink("full") > 20, "no bar beside the V"
-        assert left_edge_ink("flat") == 0, "the flat variant kept its bars"
+        outer, inner = (6, 20), (26, 40)
+        assert ink("full", *outer) > 15, "the full mark lost its outer bar"
+        assert ink("full", *inner) > 15, "the full mark lost its inner bar"
+        assert ink("flat", *outer) > 15, "the small frame lost its bars entirely"
+        assert ink("flat", *inner) == 0, "the small frame kept the inner bar"
 
     def test_drawing_is_deterministic(self):
         """The committed art is checked against the generator, so the

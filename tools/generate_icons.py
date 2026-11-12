@@ -9,10 +9,11 @@ Detail that works at 256 pixels does not survive 16, so the artwork is drawn
     256 / 128   installer, About        the V with two bars either side
     32 / 48     taskbar, alt-tab        the same, with heavier strokes so
                                         nothing thins out below a pixel
-    16          tray, title bar         the V alone - five separate shapes
-                                        cannot be told apart across sixteen
-                                        pixels, and a crisp letter beats a
-                                        crowded smudge
+    16          tray, title bar         the V with one bar each side - five
+                                        separate shapes cannot be told apart
+                                        across sixteen pixels, but dropping
+                                        the bars entirely made the tray read
+                                        as a different logo from the app
 
 Run it from the repository root:
 
@@ -102,13 +103,19 @@ def draw_mark(work: int, colour, variant: str) -> Image.Image:
     fill = tuple(colour) + (255,)
 
     if variant == "flat":
-        # One shape, as heavy as it can be without closing its own mouth.
-        _draw_vee(draw, work, fill, 28, 72, 24, 75, 11)
+        # Keeps one bar each side. The inner pair cannot be told from the V
+        # at this size, but dropping the lot made the tray look like a
+        # different logo from the app it belongs to - which is the complaint
+        # the per-size artwork was supposed to answer, not cause.
+        _draw_vee(draw, work, fill, 34, 66, 24, 75, 10)
+        _bar(draw, 10 * u, 51 * u, 26 * u, 11 * u, fill)
+        _bar(draw, 90 * u, 51 * u, 26 * u, 11 * u, fill)
         return layer
 
     stroke, bar_w = (10, 8) if variant == "full" else (11.5, 9)
     _draw_vee(draw, work, fill, 36, 64, 26, 76, stroke)
     # Taller bar nearest the letter, so the V stays the tallest thing here.
+    # The inner pair is what the flat variant drops.
     for x, height in ((25, 30), (13, 17)):
         _bar(draw, x * u, 51 * u, height * u, bar_w * u, fill)
         _bar(draw, (100 - x) * u, 51 * u, height * u, bar_w * u, fill)
