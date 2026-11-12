@@ -301,6 +301,9 @@ class TestTheRailFollowsTheApp:
 class TestAUserWithNoApiKeyLandsSomewhereUseful:
     def test_a_keyless_start_is_routed_to_the_no_key_finish(self, app, monkeypatch):
         app._config.set("api_key", "")
+        # Somebody who has been through the first run and later cleared
+        # their key: they get the settings window, not the wizard again.
+        app._config.set("onboarding_complete", True)
         taken = []
         monkeypatch.setattr(
             "src.main.QTimer.singleShot",
@@ -312,8 +315,51 @@ class TestAUserWithNoApiKeyLandsSomewhereUseful:
     def test_an_unconfigured_start_opens_the_general_pane(self, app):
         app._build_settings_window()
         app._config.set("api_key", "")
+        app._config.set("onboarding_complete", True)
         app._startup_finish_no_key()
         assert app._settings_window.current_pane().PANE_ID == "general"
+
+
+class TestABrandNewUserGetsTheFirstRun:
+    """A key is not what decides this. Someone who chooses the private
+    option never has one, and would otherwise be handed the wizard on
+    every single launch."""
+
+    def test_the_shortcut_starts_even_with_no_key(self, app, monkeypatch):
+        """Step 4 asks them to hold the shortcut; it has to do something."""
+        app._config.set("api_key", "")
+        app._config.set("onboarding_complete", False)
+        taken = []
+        monkeypatch.setattr(
+            "src.main.QTimer.singleShot",
+            lambda _ms, fn: taken.append(getattr(fn, "__name__", str(fn))),
+        )
+        app._startup_stage_2()
+        assert taken == ["_startup_stage_3"], (
+            "a first-time user's shortcut never starts, so step 4 does nothing"
+        )
+
+    def test_the_wizard_is_what_they_are_shown(self, app, monkeypatch):
+        app._config.set("api_key", "")
+        app._config.set("onboarding_complete", False)
+        shown = []
+        monkeypatch.setattr(app, "_show_first_run", lambda: shown.append("wizard"))
+        monkeypatch.setattr(app, "_show_settings", lambda: shown.append("settings"))
+        app._splash.close_splash = lambda: None
+        app._finish_and_show_taskbar()
+        assert shown == ["wizard"]
+
+    def test_an_offline_user_keeps_their_shortcut(self, app, monkeypatch):
+        app._config.set("api_key", "")
+        app._config.set("onboarding_complete", True)
+        app._config.set("offline_mode", True)
+        taken = []
+        monkeypatch.setattr(
+            "src.main.QTimer.singleShot",
+            lambda _ms, fn: taken.append(getattr(fn, "__name__", str(fn))),
+        )
+        app._startup_stage_2()
+        assert taken == ["_startup_stage_3"]
 
 
 class TestSettingsChangesGoThroughApplySetting:

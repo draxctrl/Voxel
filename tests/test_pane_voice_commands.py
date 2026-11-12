@@ -16,6 +16,11 @@ NOT_USER_FACING = {
     "llm_model",
     "whisper_model",
     "offline_model",
+    # Whether this user has been through the first run. Deliberately
+    # not a setting: nobody wants a switch that replays the wizard,
+    # and "have they got a key" cannot answer it for someone who
+    # chose to work offline and has no key at all.
+    "onboarding_complete",
 }
 
 

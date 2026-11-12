@@ -103,13 +103,15 @@ def draw_mark(work: int, colour, variant: str) -> Image.Image:
     fill = tuple(colour) + (255,)
 
     if variant == "flat":
-        # Keeps one bar each side. The inner pair cannot be told from the V
-        # at this size, but dropping the lot made the tray look like a
-        # different logo from the app it belongs to - which is the complaint
-        # the per-size artwork was supposed to answer, not cause.
-        _draw_vee(draw, work, fill, 34, 66, 24, 75, 10)
-        _bar(draw, 10 * u, 51 * u, 26 * u, 11 * u, fill)
-        _bar(draw, 90 * u, 51 * u, 26 * u, 11 * u, fill)
+        # The same four bars as every other size, drawn tighter so they
+        # still separate at sixteen pixels. Dropping the inner pair was
+        # the legible choice and the wrong one: it made the tray read as
+        # a different logo from the app it belongs to, which is the thing
+        # per-size artwork exists to prevent.
+        _draw_vee(draw, work, fill, 39, 61, 22, 78, 10)
+        for x, height in ((25, 34), (10, 20)):
+            _bar(draw, x * u, 50 * u, height * u, 9 * u, fill)
+            _bar(draw, (100 - x) * u, 50 * u, height * u, 9 * u, fill)
         return layer
 
     stroke, bar_w = (10, 8) if variant == "full" else (11.5, 9)
@@ -153,9 +155,11 @@ def draw_tray(size: int, state: str) -> Image.Image:
     """
     scale = 4
     work = size * scale
+    # Ready wears exactly the app icon's indigo. It was a darker shade,
+    # which read in the tray as a different logo rather than as the same
+    # app sitting quietly. The states differ by what is ON the tile - a
+    # red dot while recording - and by a lighter tile while working.
     tile_colour = INDIGO_LIGHT if state == "processing" else INDIGO
-    if state == "idle":
-        tile_colour = INDIGO_DARK
 
     tile = Image.new("RGBA", (work, work), tuple(tile_colour) + (255,))
     tile = Image.alpha_composite(tile, draw_mark(work, MARK, "flat"))
@@ -163,7 +167,7 @@ def draw_tray(size: int, state: str) -> Image.Image:
 
     if state == "recording":
         draw = ImageDraw.Draw(tile)
-        r = work * 0.17
+        r = work * 0.20
         cx = cy = work * 0.76
         draw.ellipse((cx - r, cy - r, cx + r, cy + r), fill=RECORDING_RED + (255,))
 

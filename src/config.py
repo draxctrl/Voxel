@@ -15,6 +15,9 @@ DEFAULT_CONFIG = {
     # nothing typed and reads it as a broken microphone. RETIRED_LLM_MODELS
     # below rewrites the ones we have seen go away.
     "llm_model": "openai/gpt-oss-120b",
+    # Who has seen the first run. Not "has an API key": that would hand
+    # the wizard to an offline-only user on every single launch.
+    "onboarding_complete": False,
     "mute_sound": False,
     "voice_commands": {},
     "active_profile": "grammar_tidy",

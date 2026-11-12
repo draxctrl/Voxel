@@ -41,10 +41,11 @@ class TestTileArtwork:
         assert _difference(tight, flat) > 6, "the flat variant still has bars"
         assert _difference(full, tight) > 0.5, "tight is not drawn any heavier"
 
-    def test_the_small_frame_keeps_one_bar_and_drops_the_other(self):
-        """The outer bar survives so the tray still reads as the same logo;
-        the inner one goes, because at 16px it cannot be told from the V.
-        Measured in the two bands where each bar sits."""
+    def test_the_small_frame_keeps_every_bar(self):
+        """One logo at every size. Dropping the inner pair at 16px was the
+        legible choice and the wrong one - the tray then read as a
+        different app from the window it belongs to. The small frame is
+        drawn tighter instead, so all four bars still separate."""
         from tools.generate_icons import draw_tile
 
         def ink(variant: str, x0: int, x1: int) -> int:
@@ -59,8 +60,8 @@ class TestTileArtwork:
         outer, inner = (6, 20), (26, 40)
         assert ink("full", *outer) > 15, "the full mark lost its outer bar"
         assert ink("full", *inner) > 15, "the full mark lost its inner bar"
-        assert ink("flat", *outer) > 15, "the small frame lost its bars entirely"
-        assert ink("flat", *inner) == 0, "the small frame kept the inner bar"
+        assert ink("flat", *outer) > 15, "the small frame lost its outer bar"
+        assert ink("flat", *inner) > 15, "the small frame lost its inner bar"
 
     def test_drawing_is_deterministic(self):
         """The committed art is checked against the generator, so the

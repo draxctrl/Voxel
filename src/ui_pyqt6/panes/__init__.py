@@ -53,6 +53,16 @@ class Pane(QWidget):
     def refresh(self) -> None:
         """Re-read the config. Called every time the pane is shown."""
 
+    def hide_header(self) -> None:
+        """Drop the pane's own title.
+
+        A pane shown somewhere that already has a heading - the first run
+        window - would otherwise say the same thing twice.
+        """
+        header = getattr(self, "_header", None)
+        if header is not None:
+            header.setVisible(False)
+
     def restyle(self, palette: dict) -> None:
         """Repaint from a palette. Called when the theme changes."""
 

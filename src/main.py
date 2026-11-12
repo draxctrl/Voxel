@@ -32,6 +32,7 @@ from src.app_detector import AppDetector
 from src.ui_pyqt6.theme import load_fonts, apply_theme, current_palette
 from src.ui_pyqt6.recording_overlay import RecordingOverlay
 from src.ui_pyqt6.recording_styles import DEFAULT_STYLE
+from src.ui_pyqt6.first_run import FirstRunWindow, needs_first_run
 from src.ui_pyqt6.splash import SplashScreen
 from src.ui_pyqt6.keys import pretty_hotkey
 from src.ui_pyqt6.settings_window import SettingsWindow
@@ -154,6 +155,7 @@ class VoxelApp:
         # UI - one window with a sidebar. History and Statistics are panes
         # in it, not windows of their own.
         self._settings_window: SettingsWindow | None = None
+        self._first_run: FirstRunWindow | None = None
         self._build_settings_window()
         # The provider is a bound lambda rather than self._recorder.current_level,
         # because applying a microphone setting replaces the recorder: a bound
@@ -350,6 +352,19 @@ class VoxelApp:
             else:
                 cleaned_text = raw_text.strip()
 
+            # The first run's last screen asks for a dictation and shows it
+            # in a box there. It is not typed into whatever is behind the
+            # window, and not written to History: the user is being shown
+            # that Voxel works, not using it yet. Emitted as a signal
+            # because this runs on the dictation thread, not the GUI one.
+            first_run = self._first_run
+            if first_run is not None and first_run.wants_the_dictation():
+                logger.info("First run: showing the dictation on its screen")
+                first_run.dictation_arrived.emit(cleaned_text)
+                self._overlay.hide()
+                self._set_state("idle")
+                return
+
             # Save to history under the mode that actually ran
             self._history.add(
                 raw_text, cleaned_text, language, duration,
@@ -485,6 +500,29 @@ class VoxelApp:
                 recorder=self._recorder,
             )
         )
+
+    def _show_first_run(self) -> None:
+        """Four screens, ending with the user having dictated."""
+        if self._first_run is None:
+            self._first_run = FirstRunWindow(
+                PaneContext(
+                    config=self._config,
+                    profiles=self._profiles,
+                    history=self._history,
+                    apply=self.apply_setting,
+                    palette=current_palette,
+                    recorder=self._recorder,
+                )
+            )
+            self._first_run.finished.connect(self._on_first_run_done)
+        self._first_run.show()
+        self._first_run.raise_()
+        self._first_run.activateWindow()
+
+    def _on_first_run_done(self) -> None:
+        """Hand them the real window once the wizard is finished with."""
+        self._first_run = None
+        self._show_settings()
 
     def _show_settings(self) -> None:
         self._open_window_on("writing_style")
@@ -649,12 +687,18 @@ class VoxelApp:
 
     def _startup_stage_2(self) -> None:
         self._splash.set_status("Connecting to Groq API...")
-        if not self._init_groq():
-            logger.info("No API key configured, showing settings")
-            self._splash.set_status("No API key found")
-            QTimer.singleShot(50, self._startup_finish_no_key)
-        else:
+        if self._init_groq():
             QTimer.singleShot(50, self._startup_stage_3)
+            return
+        # No Groq key, but the shortcut still has to work: someone who
+        # chose the private option has no key at all, and the first run
+        # ends by asking them to hold the shortcut and say something.
+        if self._config.get("offline_mode", False) or needs_first_run(self._config):
+            QTimer.singleShot(50, self._startup_stage_3)
+            return
+        logger.info("No API key configured, showing settings")
+        self._splash.set_status("No API key found")
+        QTimer.singleShot(50, self._startup_finish_no_key)
 
     def _startup_stage_3(self) -> None:
         self._splash.set_status("Starting hotkey listener...")
@@ -668,6 +712,9 @@ class VoxelApp:
 
     def _finish_and_show_taskbar(self) -> None:
         self._splash.close_splash()
+        if needs_first_run(self._config):
+            self._show_first_run()
+            return
         self._show_settings()
 
     def _startup_finish_no_key(self) -> None:
@@ -677,6 +724,9 @@ class VoxelApp:
         the old window left a new user, in a window they can read.
         """
         self._splash.close_splash()
+        if needs_first_run(self._config):
+            self._show_first_run()
+            return
         # Choose the pane now and only delay the show, so what the user
         # lands on does not depend on a timer having fired.
         if self._settings_window is None:
