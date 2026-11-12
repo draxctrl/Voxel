@@ -36,11 +36,11 @@ RequestExecutionLevel user
 !insertmacro MUI_LANGUAGE "English"
 
 ; Version info
-VIProductVersion "3.1.1.0"
+VIProductVersion "3.0.0.0"
 VIAddVersionKey "ProductName" "Voxel"
 VIAddVersionKey "FileDescription" "Voxel Voice Dictation"
-VIAddVersionKey "FileVersion" "3.1.1"
-VIAddVersionKey "ProductVersion" "3.1.1"
+VIAddVersionKey "FileVersion" "3.0.0"
+VIAddVersionKey "ProductVersion" "3.0.0"
 VIAddVersionKey "LegalCopyright" "Copyright (C) 2026 draxctrl. Free software under the GNU GPL v3."
 
 ; Installer
@@ -72,7 +72,7 @@ Section "Install"
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Voxel" "UninstallString" '"$INSTDIR\Uninstall.exe"'
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Voxel" "DisplayIcon" "$INSTDIR\Voxel.exe"
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Voxel" "Publisher" "Voxel"
-    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Voxel" "DisplayVersion" "3.1.1"
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Voxel" "DisplayVersion" "3.0.0"
     WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Voxel" "NoModify" 1
     WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Voxel" "NoRepair" 1
 SectionEnd
