@@ -7,6 +7,11 @@ import threading
 import time
 from logging.handlers import RotatingFileHandler
 
+# Before PyQt6, and that order is not a style choice: with Qt loaded
+# first, building a Whisper model takes the whole process down with a
+# Windows access violation and no error of any kind.
+from src import offline_preload  # noqa: F401  (imported for its side effect)
+
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import QTimer
 from PyQt6.QtGui import QIcon
