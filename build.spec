@@ -22,6 +22,20 @@ a = Analysis(
         'pynput.keyboard._win32',
         'pynput.mouse._win32',
         'PyQt6',
+        # The settings panes are looked up by name through importlib, so
+        # nothing imports them in a way PyInstaller can see. Left out,
+        # the built app dies on startup with "No module named ...".
+        # tests/test_build_spec.py keeps this list in step with the registry.
+        'src.ui_pyqt6.panes.writing_style',
+        'src.ui_pyqt6.panes.voice_commands',
+        'src.ui_pyqt6.panes.language',
+        'src.ui_pyqt6.panes.microphone',
+        'src.ui_pyqt6.panes.shortcuts',
+        'src.ui_pyqt6.panes.appearance',
+        'src.ui_pyqt6.panes.history',
+        'src.ui_pyqt6.panes.stats',
+        'src.ui_pyqt6.panes.general',
+        'src.ui_pyqt6.panes.about',
     ],
     hookspath=[],
     hooksconfig={},
