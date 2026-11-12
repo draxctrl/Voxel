@@ -107,14 +107,14 @@ class StatsPane(Pane):
 
         _area, layout = pane_body(self)
 
-        self._header = PaneHeader(self.TITLE, self.SUBTITLE)
+        self._header = PaneHeader(self.TITLE, self.SUBTITLE, self)
         layout.addWidget(self._header)
         layout.addSpacing(10)
 
         row = QHBoxLayout()
         row.setSpacing(10)
         for key, caption in self.FIGURES.items():
-            figure = _Figure(caption, self.ICONS[key])
+            figure = _Figure(caption, self.ICONS[key], self)
             self._figures[key] = figure
             row.addWidget(figure, 1)
         layout.addLayout(row)

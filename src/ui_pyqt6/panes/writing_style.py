@@ -63,19 +63,19 @@ class WritingStylePane(Pane):
 
         _area, layout = pane_body(self)
 
-        self._header = PaneHeader(self.TITLE, self.SUBTITLE)
+        self._header = PaneHeader(self.TITLE, self.SUBTITLE, self)
         layout.addWidget(self._header)
         layout.addSpacing(6)
 
         for style_id in HEADLINE_IDS:
             title, subtitle = _HEADLINES[style_id]
-            row = ChoiceRow(style_id, title, subtitle)
+            row = ChoiceRow(style_id, title, subtitle, self)
             row.clicked.connect(self.choose)
             self._rows[style_id] = row
             layout.addWidget(row)
 
         layout.addSpacing(4)
-        self._more_link = LinkLabel("More styles")
+        self._more_link = LinkLabel("More styles", self)
         self._more_link.clicked.connect(self._toggle_more)
         layout.addWidget(self._more_link)
 
@@ -87,7 +87,7 @@ class WritingStylePane(Pane):
         layout.addWidget(self._more)
 
         layout.addSpacing(10)
-        self._offline = SwitchRow("Work offline", OFFLINE_DESCRIPTION)
+        self._offline = SwitchRow("Work offline", OFFLINE_DESCRIPTION, self)
         self._offline.toggled.connect(self._on_offline_toggled)
         layout.addWidget(self._offline)
 
@@ -257,7 +257,7 @@ class WritingStylePane(Pane):
 
         for style_id in hidden:
             name = profiles[style_id].get("name", style_id)
-            row = ChoiceRow(style_id, name, "")
+            row = ChoiceRow(style_id, name, "", self._more)
             row.clicked.connect(self.choose)
             row.restyle(self._current_palette())
             self._rows[style_id] = row

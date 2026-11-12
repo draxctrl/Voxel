@@ -94,7 +94,7 @@ class VoiceCommandsPane(Pane):
 
         _area, layout = pane_body(self)
 
-        self._header = PaneHeader(self.TITLE, self.SUBTITLE)
+        self._header = PaneHeader(self.TITLE, self.SUBTITLE, self)
         layout.addWidget(self._header)
         layout.addSpacing(6)
 
@@ -215,7 +215,7 @@ class VoiceCommandsPane(Pane):
         commands = self.commands()
         palette = getattr(self, "_palette", None) or self.ctx.palette()
         for trigger in sorted(commands):
-            row = _CommandRow(trigger, commands[trigger], self.delete_command)
+            row = _CommandRow(trigger, commands[trigger], self.delete_command, self._rows_host)
             row.restyle(palette)
             self._rows.append(row)
             self._rows_layout.addWidget(row)

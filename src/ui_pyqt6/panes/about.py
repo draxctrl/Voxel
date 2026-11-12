@@ -33,7 +33,7 @@ class AboutPane(Pane):
 
         _area, layout = pane_body(self)
 
-        self._header = PaneHeader(self.TITLE, self.SUBTITLE)
+        self._header = PaneHeader(self.TITLE, self.SUBTITLE, self)
         layout.addWidget(self._header)
         layout.addSpacing(6)
 

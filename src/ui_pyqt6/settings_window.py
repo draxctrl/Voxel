@@ -50,9 +50,14 @@ class SettingsWindow(QWidget):
 
         # Eager construction: ten small widgets, and lazy building would
         # mean restyle() could not reach a pane the user had not opened.
+        #
+        # Built with the stack as their parent, not adopted afterwards. A
+        # parentless QWidget is a top-level window, so building ten of them
+        # and reparenting them a line later gave Windows ten windows to
+        # flash on screen while Voxel started.
         self._panes: dict[str, Pane] = {}
         for pane_class in all_panes():
-            pane = pane_class(ctx)
+            pane = pane_class(ctx, self._stack)
             self._panes[pane.PANE_ID] = pane
             self._stack.addWidget(pane)
 

@@ -52,7 +52,7 @@ class GeneralPane(Pane):
 
         _area, layout = pane_body(self)
 
-        self._header = PaneHeader(self.TITLE, self.SUBTITLE)
+        self._header = PaneHeader(self.TITLE, self.SUBTITLE, self)
         layout.addWidget(self._header)
         layout.addSpacing(6)
 
@@ -108,7 +108,7 @@ class GeneralPane(Pane):
         layout.addSpacing(10)
 
         for key, (label, description) in _SWITCHES.items():
-            row = SwitchRow(label, description)
+            row = SwitchRow(label, description, self)
             row.toggled.connect(lambda value, k=key: self.ctx.apply(k, value))
             self._rows[key] = row
             layout.addWidget(row)

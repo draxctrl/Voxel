@@ -115,7 +115,7 @@ class ShortcutsPane(Pane):
 
         _area, layout = pane_body(self)
 
-        self._header = PaneHeader(self.TITLE, self.SUBTITLE)
+        self._header = PaneHeader(self.TITLE, self.SUBTITLE, self)
         layout.addWidget(self._header)
         layout.addSpacing(6)
 
@@ -137,7 +137,7 @@ class ShortcutsPane(Pane):
 
         for mode_id in MODE_IDS:
             title, subtitle = _MODES[mode_id]
-            row = ChoiceRow(mode_id, title, subtitle)
+            row = ChoiceRow(mode_id, title, subtitle, self)
             row.clicked.connect(self.choose_mode)
             self._mode_rows[mode_id] = row
             layout.addWidget(row)

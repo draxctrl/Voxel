@@ -113,7 +113,7 @@ class _DeviceRow(QWidget):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        self.choice = ChoiceRow(row_id, title, subtitle)
+        self.choice = ChoiceRow(row_id, title, subtitle, self)
         layout.addWidget(self.choice, 1)
         self.meter = _LevelMeter(self.choice)
         meter_slot = QHBoxLayout()
@@ -140,7 +140,7 @@ class MicrophonePane(Pane):
         _area, layout = pane_body(self)
         self._layout = layout
 
-        self._header = PaneHeader(self.TITLE, self.SUBTITLE)
+        self._header = PaneHeader(self.TITLE, self.SUBTITLE, self)
         layout.addWidget(self._header)
         layout.addSpacing(6)
 
@@ -282,7 +282,7 @@ class MicrophonePane(Pane):
 
         palette = getattr(self, "_palette", None) or self.ctx.palette()
         for row_id, title, subtitle in entries:
-            row = _DeviceRow(row_id, title, subtitle)
+            row = _DeviceRow(row_id, title, subtitle, self._rows_host)
             row.choice.clicked.connect(self.choose)
             row.restyle(palette)
             self._rows[row_id] = row

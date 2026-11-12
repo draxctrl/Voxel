@@ -37,7 +37,7 @@ class AppearancePane(Pane):
 
         _area, layout = pane_body(self)
 
-        self._header = PaneHeader(self.TITLE, self.SUBTITLE)
+        self._header = PaneHeader(self.TITLE, self.SUBTITLE, self)
         layout.addWidget(self._header)
         layout.addSpacing(6)
 
@@ -47,7 +47,7 @@ class AppearancePane(Pane):
 
         for theme_id in THEME_IDS:
             title, subtitle = _THEMES[theme_id]
-            row = ChoiceRow(theme_id, title, subtitle)
+            row = ChoiceRow(theme_id, title, subtitle, self)
             row.clicked.connect(self.choose_theme)
             self._theme_rows[theme_id] = row
             layout.addWidget(row)
@@ -58,7 +58,7 @@ class AppearancePane(Pane):
         layout.addWidget(self._style_heading)
 
         for style_id, name in RECORDING_STYLES.items():
-            row = ChoiceRow(style_id, name, _STYLE_SUBTITLES.get(style_id, ""))
+            row = ChoiceRow(style_id, name, _STYLE_SUBTITLES.get(style_id, ""), self)
             row.clicked.connect(self.choose_style)
             self._style_rows[style_id] = row
             layout.addWidget(row)

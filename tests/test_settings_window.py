@@ -160,3 +160,48 @@ class TestTheWindowCarriesTheAppIcon:
         b = scaled.pixelColor(8, 8)
         assert abs(a.red() - b.red()) < 60
         assert abs(a.blue() - b.blue()) < 60
+
+
+class TestPanesAreNeverWindowsOfTheirOwn:
+    """Ten panes built without a parent are ten top-level windows for the
+    instant before the stack adopts them, and Windows paints each one.
+    Starting Voxel flashed eleven windows across one second, right before
+    the splash - which looks exactly like something a person should not
+    have installed."""
+
+    def test_a_pane_is_not_a_window_while_it_is_being_built(self, qapp, ctx):
+        import src.ui_pyqt6.settings_window as mod
+        from src.ui_pyqt6.panes import Pane
+
+        was_window = []
+
+        class Probe(Pane):
+            PANE_ID = "probe"
+            TITLE = "Probe"
+            SUBTITLE = ""
+            OWNS = frozenset()
+
+            def __init__(self, context, parent=None):
+                super().__init__(context, parent)
+                # True for a parentless widget: Qt makes it a window.
+                was_window.append(self.isWindow())
+
+        original = mod.all_panes
+        mod.all_panes = lambda: [Probe]
+        try:
+            mod.SettingsWindow(ctx)
+        finally:
+            mod.all_panes = original
+
+        assert was_window == [False], (
+            "the pane was a top-level window while it was built, so Windows "
+            "had something to flash on screen"
+        )
+
+    def test_every_pane_belongs_to_the_stack(self, qapp, ctx):
+        from src.ui_pyqt6.settings_window import SettingsWindow
+
+        win = SettingsWindow(ctx)
+        for pane in win.panes():
+            assert pane.isWindow() is False, "%s is a window" % pane.PANE_ID
+            assert pane.parent() is not None, "%s has no parent" % pane.PANE_ID

@@ -60,13 +60,13 @@ class LanguagePane(Pane):
 
         _area, layout = pane_body(self)
 
-        self._header = PaneHeader(self.TITLE, self.SUBTITLE)
+        self._header = PaneHeader(self.TITLE, self.SUBTITLE, self)
         layout.addWidget(self._header)
         layout.addSpacing(6)
 
         assets = _flags_dir()
         for code, name in LANGUAGES:
-            row = ChoiceRow(code, name, "")
+            row = ChoiceRow(code, name, "", self)
             self._add_flag(row, code, assets)
             row.clicked.connect(self.choose)
             self._rows[code] = row

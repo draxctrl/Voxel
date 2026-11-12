@@ -163,7 +163,7 @@ class NavRail(QWidget):
         brand_row = QHBoxLayout()
         brand_row.setContentsMargins(6, 0, 0, 0)
         brand_row.setSpacing(8)
-        self._logo = QLabel()
+        self._logo = QLabel(self)
         self._logo.setFixedSize(QSize(LOGO_SIZE, LOGO_SIZE))
         self._logo.setVisible(False)
         self._has_logo = False
@@ -178,14 +178,14 @@ class NavRail(QWidget):
                 self._has_logo = True
         brand_row.addWidget(self._logo, 0, Qt.AlignmentFlag.AlignVCenter)
 
-        self._brand = QLabel("Voxel")
+        self._brand = QLabel("Voxel", self)
         self._brand.setObjectName("rail_brand")
         brand_row.addWidget(self._brand, 1, Qt.AlignmentFlag.AlignVCenter)
         layout.addLayout(brand_row)
         _soft_gap(layout, 16)
 
         for title, rows in self.ENTRIES:
-            group = QLabel(title.upper())
+            group = QLabel(title.upper(), self)
             group.setObjectName("rail_group")
             layout.addWidget(group)
             _soft_gap(layout, 2)
@@ -199,7 +199,7 @@ class NavRail(QWidget):
 
         layout.addStretch(1)
 
-        self._divider = QFrame()
+        self._divider = QFrame(self)
         self._divider.setObjectName("rail_divider")
         self._divider.setFixedHeight(1)
         layout.addWidget(self._divider)
@@ -208,9 +208,9 @@ class NavRail(QWidget):
         footer = QHBoxLayout()
         footer.setContentsMargins(6, 0, 0, 0)
         footer.setSpacing(8)
-        self._dot = _StatusDot()
+        self._dot = _StatusDot(self)
         footer.addWidget(self._dot, 0, Qt.AlignmentFlag.AlignVCenter)
-        self._status = QLabel()
+        self._status = QLabel(self)
         self._status.setObjectName("rail_status")
         # "Ctrl + Shift + Space" is wider than the rail; wrapping it beats
         # running it off the edge, and the rail has the vertical room.
@@ -224,7 +224,7 @@ class NavRail(QWidget):
     # entries
 
     def _make_entry(self, pane_id: str, label: str, icon_name: str) -> QPushButton:
-        button = QPushButton("  " + label)
+        button = QPushButton("  " + label, self)
         button.setObjectName("rail_entry")
         button.setProperty("pane_id", pane_id)
         button.setProperty("icon_name", icon_name)

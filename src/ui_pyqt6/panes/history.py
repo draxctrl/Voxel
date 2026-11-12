@@ -148,7 +148,7 @@ class HistoryPane(Pane):
 
         _area, layout = pane_body(self)
 
-        self._header = PaneHeader(self.TITLE, self.SUBTITLE)
+        self._header = PaneHeader(self.TITLE, self.SUBTITLE, self)
         layout.addWidget(self._header)
         layout.addSpacing(6)
 
@@ -294,7 +294,7 @@ class HistoryPane(Pane):
 
         palette = getattr(self, "_palette", None) or self.ctx.palette()
         for entry in self._entries:
-            row = _EntryRow(entry, self.copy_entry, self.delete_entry)
+            row = _EntryRow(entry, self.copy_entry, self.delete_entry, self._rows_host)
             row.restyle(palette)
             self._rows.append(row)
             self._rows_layout.addWidget(row)

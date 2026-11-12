@@ -83,7 +83,7 @@ class SplashScreen(QWidget):
         brand.setSpacing(12)
         brand.addStretch(1)
 
-        self._logo = QLabel()
+        self._logo = QLabel(self)
         self._logo.setFixedSize(QSize(LOGO_SIZE, LOGO_SIZE))
         if path:
             # From the .ico, which carries artwork drawn for small sizes.
@@ -93,7 +93,7 @@ class SplashScreen(QWidget):
                 self._has_logo = True
         brand.addWidget(self._logo, 0, Qt.AlignmentFlag.AlignVCenter)
 
-        self._title = QLabel("Voxel")
+        self._title = QLabel("Voxel", self)
         self._title.setStyleSheet(
             "color: {text}; font-size: 26px; font-weight: 700;"
             " background: transparent;".format(**p)
@@ -104,7 +104,9 @@ class SplashScreen(QWidget):
 
         layout.addSpacing(6)
 
-        self._subtitle = QLabel("Speak anywhere, and your words are typed for you")
+        self._subtitle = QLabel(
+            "Speak anywhere, and your words are typed for you", self
+        )
         self._subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._subtitle.setStyleSheet(
             "color: {muted}; font-size: 12px; background: transparent;".format(**p)
@@ -113,7 +115,7 @@ class SplashScreen(QWidget):
 
         layout.addStretch(1)
 
-        self._status_label = QLabel("Starting up…")
+        self._status_label = QLabel("Starting up…", self)
         self._status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._status_label.setStyleSheet(
             "color: {muted}; font-size: 12px; background: transparent;".format(**p)
@@ -122,7 +124,7 @@ class SplashScreen(QWidget):
 
         layout.addSpacing(4)
 
-        self._hint = QLabel(self._hint_for(self._shortcut))
+        self._hint = QLabel(self._hint_for(self._shortcut), self)
         self._hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._hint.setStyleSheet(
             "color: {faint}; font-size: 11px; background: transparent;".format(**p)
