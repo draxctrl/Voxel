@@ -42,23 +42,31 @@ a = Analysis(
     runtime_hooks=[],
     excludes=[
         'customtkinter', 'tkinter',
-        # Offline mode deps - excluded to keep launch fast
-        # Users can pip install faster-whisper separately to enable offline mode
-        'faster_whisper', 'ctranslate2', 'onnxruntime', 'tokenizers',
-        'huggingface_hub', 'av', 'numpy', 'torch', 'sympy', 'mpmath',
-        'protobuf', 'flatbuffers',
+        # faster-whisper and its engine are IN the build: the app offers
+        # Work offline and the README sells it, and for three versions
+        # leaving them out meant turning it on broke every dictation.
+        # They are what makes this a folder rather than one file - 150MB
+        # unpacking itself on every launch is not a trade worth making.
+        #
+        # torch is not among them. faster-whisper runs on ctranslate2 and
+        # never imports it, and it would add a gigabyte.
+        'torch', 'sympy', 'mpmath',
     ],
     noarchive=False,
 )
 
 pyz = PYZ(a.pure)
 
+# A folder, not a single file. One-file builds unpack their whole payload
+# into a temporary directory on every launch; with the offline engine
+# aboard that is ~180MB of unpacking before the window appears, every
+# time, for everyone - including the people who never turn offline on.
+# The installer hides the folder, and the portable download is a zip.
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
     [],
+    exclude_binaries=True,
     name='Voxel',
     debug=False,
     bootloader_ignore_signals=False,
@@ -66,4 +74,14 @@ exe = EXE(
     upx=True,
     console=False,
     icon='src/assets/icon.ico',
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name='Voxel',
 )

@@ -42,3 +42,35 @@ class TestEveryDynamicallyLoadedPaneIsBundled:
     def test_the_registry_itself_is_not_empty(self):
         """A registry that silently emptied would make the check vacuous."""
         assert [t for t in _REGISTRY.values() if t], "no panes to check"
+
+
+class TestOfflineTranscriptionIsInTheBuild:
+    """The app offers Work offline, the README sells it against WisprFlow,
+    and for three versions the packaged build excluded the components that
+    make it work. Turning it on there broke every dictation."""
+
+    #: What faster-whisper needs to run. torch is not among them: it is
+    #: huge and faster-whisper does not use it.
+    REQUIRED = ("faster_whisper", "ctranslate2", "onnxruntime", "tokenizers",
+                "huggingface_hub", "av", "numpy")
+
+    @staticmethod
+    def _excludes() -> list[str]:
+        text = io.open(SPEC, encoding="utf-8").read()
+        block = re.search(r"excludes\s*=\s*\[(.*?)\]", text, re.S)
+        assert block, "build.spec has no excludes list"
+        return re.findall(r"['\"]([^'\"]+)['\"]", block.group(1))
+
+    def test_nothing_offline_mode_needs_is_excluded(self):
+        excluded = set(self._excludes())
+        shut_out = [name for name in self.REQUIRED if name in excluded]
+        assert not shut_out, (
+            "offline transcription cannot work in the build without: %s"
+            % ", ".join(shut_out)
+        )
+
+    def test_the_engine_loads_before_qt_in_the_build_too(self):
+        """The preload is what stops the packaged app crashing as well."""
+        text = io.open(SPEC, encoding="utf-8").read()
+        assert "src/main.py" in text or "src\\main.py" in text
+        import src.offline_preload  # noqa: F401  - must import cleanly

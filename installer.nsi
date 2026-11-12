@@ -47,8 +47,10 @@ VIAddVersionKey "LegalCopyright" "Copyright (C) 2026 draxctrl. Free software und
 Section "Install"
     SetOutPath "$INSTDIR"
 
-    ; Main executable
-    File "dist\Voxel.exe"
+    ; The whole program folder. Voxel ships as a folder rather than as one
+    ; file because it carries the offline transcription engine, and a single
+    ; file would unpack all of it on every launch.
+    File /r "dist\Voxel\*.*"
 
     ; The GPL requires that everyone who receives the program also
     ; receives the licence, so it ships beside the executable.
