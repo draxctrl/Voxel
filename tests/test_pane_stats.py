@@ -96,3 +96,31 @@ class TestAnEmptyHistory:
 class TestThePaneDeclaresWhatItOwns:
     def test_it_owns_no_settings(self):
         assert StatsPane.OWNS == frozenset()
+
+
+class TestEachFigureIsMarked:
+    """Three numbers in three identical boxes are hard to tell apart at a
+    glance. An icon on each gives the eye something to land on before it
+    reads the caption."""
+
+    def test_every_figure_has_an_icon(self, qapp, ctx):
+        pane = StatsPane(ctx)
+        pane.restyle(ctx.palette())
+        for key, figure in pane._figures.items():
+            pixmap = figure.mark.pixmap()
+            assert pixmap is not None and not pixmap.isNull(), (
+                "the %s figure has no icon" % key
+            )
+
+    def test_the_icons_are_bundled_phosphor_names(self, qapp, ctx):
+        from src.ui_pyqt6.icons import ICON_NAMES
+
+        missing = set(StatsPane.ICONS.values()) - ICON_NAMES
+        assert not missing, "not bundled: %s" % ", ".join(sorted(missing))
+
+    def test_each_figure_gets_its_own_icon(self, qapp, ctx):
+        """Three copies of one icon would mark nothing."""
+        assert len(set(StatsPane.ICONS.values())) == len(StatsPane.FIGURES)
+
+    def test_every_figure_is_covered(self, qapp, ctx):
+        assert set(StatsPane.ICONS) == set(StatsPane.FIGURES)

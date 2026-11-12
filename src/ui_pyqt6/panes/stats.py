@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import logging
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QSize, Qt
 from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout
 
+from ..icons import icon as load_icon
 from . import Pane, PaneContext
 from .widgets import pane_surface_qss, repaint_with, PaneHeader, pane_body
 
@@ -33,14 +34,23 @@ def format_time_saved(words: int) -> str:
 
 
 class _Figure(QFrame):
-    """One big number with its caption underneath."""
+    """One big number, under its own mark and over its caption."""
 
-    def __init__(self, caption: str, parent=None) -> None:
+    #: How big the mark is drawn. Large enough to read as a symbol, small
+    #: enough that the number stays the thing you see first.
+    MARK_PX = 20
+
+    def __init__(self, caption: str, icon_name: str, parent=None) -> None:
         super().__init__(parent)
         self.setObjectName("setting_row")
+        self._icon_name = icon_name
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setContentsMargins(18, 16, 18, 18)
         layout.setSpacing(2)
+        self.mark = QLabel()
+        self.mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.mark.setFixedHeight(self.MARK_PX + 6)
+        layout.addWidget(self.mark)
         self.value = QLabel("0")
         self.value.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.value)
@@ -54,6 +64,14 @@ class _Figure(QFrame):
             "QFrame#setting_row {{ background-color: {row};"
             " border: 1px solid {row_border}; border-radius: 11px; }}".format(**p)
         )
+        # The mark is tinted every restyle: a pixmap drawn for the dark
+        # palette keeps its colour when the theme flips.
+        self.mark.setPixmap(
+            load_icon(self._icon_name, p["accent"], self.MARK_PX).pixmap(
+                QSize(self.MARK_PX, self.MARK_PX)
+            )
+        )
+        self.mark.setStyleSheet("background: transparent;")
         self.value.setStyleSheet(
             "color: {text}; font-size: 30px; font-weight: 700;"
             " background: transparent;".format(**p)
@@ -76,6 +94,13 @@ class StatsPane(Pane):
         "this_week": "Dictations this week",
     }
 
+    #: figure key -> the Phosphor icon that marks it.
+    ICONS = {
+        "words": "chat-text",
+        "time_saved": "clock-counter-clockwise",
+        "this_week": "chart-bar",
+    }
+
     def __init__(self, ctx: PaneContext, parent=None) -> None:
         super().__init__(ctx, parent)
         self._figures: dict[str, _Figure] = {}
@@ -89,7 +114,7 @@ class StatsPane(Pane):
         row = QHBoxLayout()
         row.setSpacing(10)
         for key, caption in self.FIGURES.items():
-            figure = _Figure(caption)
+            figure = _Figure(caption, self.ICONS[key])
             self._figures[key] = figure
             row.addWidget(figure, 1)
         layout.addLayout(row)
