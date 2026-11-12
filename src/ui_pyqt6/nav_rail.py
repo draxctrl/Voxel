@@ -287,6 +287,9 @@ class NavRail(QWidget):
         self._dot.set_colour(colour)
         self._status.setText(word + " · " + shortcut if shortcut else word)
 
+    def status_labels(self) -> list:
+        return [self._status]
+
     def status_text(self) -> str:
         return self._status.text()
 

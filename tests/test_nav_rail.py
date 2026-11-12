@@ -209,3 +209,48 @@ class TestTheRailCarriesTheAppMark:
         rail = NavRail()
         assert rail.logo_is_shown() is False
         assert rail._brand.text() == "Voxel"
+
+
+class TestTheStatusLineIsFullyVisible:
+    """The status exists to tell you your shortcut, so a shortcut that
+    does not fit the rail is the one part that must not be the part that
+    gets cut. A long combination wraps; the window's smallest size has to
+    leave room for the wrapped line."""
+
+    @staticmethod
+    def _needed_height(label) -> int:
+        """How tall the label's own text is at the width it was given."""
+        from PyQt6.QtCore import QRect
+        from PyQt6.QtCore import Qt as _Qt
+
+        return label.fontMetrics().boundingRect(
+            QRect(0, 0, max(label.width(), 1), 10_000),
+            int(_Qt.TextFlag.TextWordWrap),
+            label.text(),
+        ).height()
+
+    def test_the_shortcut_is_not_cut_off_in_the_window(self, qapp, ctx):
+        from src.ui_pyqt6.settings_window import MINIMUM_SIZE, SettingsWindow
+
+        # The longest combination the shortcut picker will produce.
+        ctx.config.set("hotkey", "<ctrl>+<shift>+<alt>+space")
+        win = SettingsWindow(ctx)
+        win.set_status("idle")
+        win.resize(*MINIMUM_SIZE)
+        win.show()
+        qapp.processEvents()
+
+        for label in win._rail.status_labels():
+            assert label.height() >= self._needed_height(label), (
+                "%r is given %dpx but needs %dpx, so part of it is cut off"
+                % (label.text(), label.height(), self._needed_height(label))
+            )
+            bottom = label.mapTo(win, label.rect().bottomLeft()).y()
+            assert bottom <= win.height(), (
+                "%r runs past the bottom of the window" % label.text()
+            )
+
+    def test_the_shortcut_is_still_part_of_the_status(self, qapp):
+        rail = NavRail()
+        rail.set_status("idle", "Ctrl + Alt + Space")
+        assert "Ctrl + Alt + Space" in rail.status_text()
