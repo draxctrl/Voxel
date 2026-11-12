@@ -6,13 +6,30 @@ than being deleted, and a user whose style is one of those keeps it.
 """
 from __future__ import annotations
 
+from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QLabel, QVBoxLayout, QWidget
+
+from src import resource_use
+from src.offline_transcriber import (
+    UNAVAILABLE_NOTICE,
+    is_available as offline_is_available,
+)
 
 from . import Pane, PaneContext
 from .widgets import pane_surface_qss, repaint_with, ChoiceRow, LinkLabel, PaneHeader, SwitchRow, pane_body
 
 #: The three on the pane itself, in this order.
 HEADLINE_IDS = ("grammar_only", "grammar_tidy", "raw")
+
+#: What offline mode actually does, rather than what it is called.
+OFFLINE_DESCRIPTION = (
+    "Turns your speech into text on this computer instead of sending it "
+    "to Groq. Nothing leaves the machine. It is slower, it works your "
+    "processor hard, and the first use downloads a model."
+)
+
+#: How often the usage figures are refreshed while offline mode is on.
+USAGE_INTERVAL_MS = 1500
 
 #: Plain-English copy. These replace "Dictation Mode" and "Raw mode".
 _HEADLINES = {
@@ -70,14 +87,26 @@ class WritingStylePane(Pane):
         layout.addWidget(self._more)
 
         layout.addSpacing(10)
-        self._offline = SwitchRow(
-            "Work offline",
-            "Slower, but nothing leaves this computer",
-        )
-        self._offline.toggled.connect(
-            lambda value: self.ctx.apply("offline_mode", value)
-        )
+        self._offline = SwitchRow("Work offline", OFFLINE_DESCRIPTION)
+        self._offline.toggled.connect(self._on_offline_toggled)
         layout.addWidget(self._offline)
+
+        self._notice = QLabel("")
+        self._notice.setObjectName("row_description")
+        self._notice.setWordWrap(True)
+        self._notice.setVisible(False)
+        layout.addWidget(self._notice)
+
+        self._usage = QLabel("")
+        self._usage.setObjectName("row_description")
+        self._usage.setWordWrap(True)
+        self._usage.setVisible(False)
+        layout.addWidget(self._usage)
+
+        self._meter = resource_use.CpuMeter()
+        self._usage_timer = QTimer(self)
+        self._usage_timer.setInterval(USAGE_INTERVAL_MS)
+        self._usage_timer.timeout.connect(self.poll_usage)
 
         layout.addStretch(1)
         self.refresh()
@@ -112,6 +141,48 @@ class WritingStylePane(Pane):
     def offline_switch(self):
         return self._offline.switch()
 
+    def offline_description(self) -> str:
+        return OFFLINE_DESCRIPTION
+
+    def offline_notice(self) -> str:
+        return self._notice.text()
+
+    def usage_text(self) -> str:
+        return self._usage.text()
+
+    def usage_is_shown(self) -> bool:
+        return self._usage.isVisible()
+
+    # ------------------------------------------------------------------
+
+    def _on_offline_toggled(self, value: bool) -> None:
+        self.ctx.apply("offline_mode", value)
+        self._set_usage_shown(bool(value))
+
+    def _set_usage_shown(self, shown: bool) -> None:
+        """Only meter the machine while there is something to meter."""
+        self._usage.setVisible(shown)
+        if shown:
+            self.poll_usage()
+            if self.isVisible():
+                self._usage_timer.start()
+        else:
+            self._usage_timer.stop()
+
+    def poll_usage(self) -> None:
+        """Refresh the usage line. A figure that cannot be read says so."""
+        self._usage.setText(resource_use.summary(self._meter))
+
+    def showEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        super().showEvent(event)
+        if self._usage.isVisible():
+            self.poll_usage()
+            self._usage_timer.start()
+
+    def hideEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        super().hideEvent(event)
+        self._usage_timer.stop()
+
     # ------------------------------------------------------------------
 
     def choose(self, style_id: str) -> None:
@@ -142,9 +213,20 @@ class WritingStylePane(Pane):
             row.set_selected(style_id == active)
 
         self._set_more_open(active not in HEADLINE_IDS)
-        self._offline.set_checked_quietly(
-            self.ctx.config.get("offline_mode", False)
-        )
+
+        wanted = bool(self.ctx.config.get("offline_mode", False))
+        available = offline_is_available()
+        if not available and wanted:
+            # Left on, every dictation fails with nothing on screen. Groq
+            # still works, so fall back to it rather than leave the user
+            # with a shortcut that does nothing.
+            self.ctx.apply("offline_mode", False)
+            wanted = False
+        self._offline.set_checked_quietly(wanted and available)
+        self._offline.switch().setEnabled(available)
+        self._notice.setText("" if available else UNAVAILABLE_NOTICE)
+        self._notice.setVisible(not available)
+        self._set_usage_shown(wanted and available)
 
     def _rebuild_more_rows(self) -> None:
         for style_id in list(self._rows):
@@ -192,5 +274,11 @@ class WritingStylePane(Pane):
         self._header.restyle(self._palette)
         self._more_link.restyle(self._palette)
         self._offline.restyle(self._palette)
+        for label in (self._notice, self._usage):
+            label.setStyleSheet(
+                "color: {muted}; font-size: 12px; background: transparent;".format(
+                    **self._palette
+                )
+            )
         for row in self._rows.values():
             row.restyle(self._palette)
