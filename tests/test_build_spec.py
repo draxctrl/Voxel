@@ -11,22 +11,29 @@ import io
 import os
 import re
 
+import pytest
+
 from src.ui_pyqt6.panes import _REGISTRY
 
-SPEC = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "build.spec")
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SPEC = os.path.join(ROOT, "build.spec")
+#: Every spec that builds the app. The macOS one shipped a DMG that
+#: crashed on launch for the same reason the Windows build did.
+ALL_SPECS = (SPEC, os.path.join(ROOT, "build_mac.spec"))
 
 
-def _hidden_imports() -> list[str]:
-    """The hiddenimports list from build.spec, as plain strings."""
-    text = io.open(SPEC, encoding="utf-8").read()
+def _hidden_imports(spec: str = SPEC) -> list[str]:
+    """The hiddenimports list from a spec, as plain strings."""
+    text = io.open(spec, encoding="utf-8").read()
     block = re.search(r"hiddenimports\s*=\s*\[(.*?)\]", text, re.S)
     assert block, "build.spec has no hiddenimports list"
     return re.findall(r"['\"]([^'\"]+)['\"]", block.group(1))
 
 
 class TestEveryDynamicallyLoadedPaneIsBundled:
-    def test_each_registry_module_is_named_in_the_spec(self):
-        hidden = _hidden_imports()
+    @pytest.mark.parametrize("spec", ALL_SPECS, ids=lambda p: os.path.basename(p))
+    def test_each_registry_module_is_named_in_the_spec(self, spec):
+        hidden = _hidden_imports(spec)
         missing = []
         for target in _REGISTRY.values():
             if target is None:
@@ -35,8 +42,8 @@ class TestEveryDynamicallyLoadedPaneIsBundled:
             if module not in hidden:
                 missing.append(module)
         assert not missing, (
-            "these panes load by name and would be left out of the build: %s"
-            % ", ".join(missing)
+            "%s leaves out panes that load by name: %s"
+            % (os.path.basename(spec), ", ".join(missing))
         )
 
     def test_the_registry_itself_is_not_empty(self):
@@ -74,3 +81,17 @@ class TestOfflineTranscriptionIsInTheBuild:
         text = io.open(SPEC, encoding="utf-8").read()
         assert "src/main.py" in text or "src\\main.py" in text
         import src.offline_preload  # noqa: F401  - must import cleanly
+
+
+class TestEverySpecShipsTheIcons:
+    """The sidebar icons are loaded from disk at runtime. A spec that does
+    not list them builds an app whose navigation is blank - which is what
+    the macOS DMG attached to v3.0.0 would have shown, had it started at
+    all."""
+
+    @pytest.mark.parametrize("spec", ALL_SPECS, ids=lambda p: os.path.basename(p))
+    def test_the_phosphor_icons_are_listed(self, spec):
+        text = io.open(spec, encoding="utf-8").read()
+        assert "icons/phosphor" in text, (
+            "%s does not bundle the sidebar icons" % os.path.basename(spec)
+        )
