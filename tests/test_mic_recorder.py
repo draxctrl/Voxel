@@ -53,7 +53,13 @@ class TestMicRecorder:
 
         recorder = MicRecorder()
         recorder.start()
-        recorder._frames = [b"\x00" * (1024 * 2)]
+        # Put the frame where stop() reads it from, under the same lock the
+        # capture thread holds. The old line set `_frames`, which nothing has
+        # read since the preroll buffer arrived, so the test was really
+        # waiting on the background thread to deliver a frame in time - and
+        # on a loaded machine it sometimes did not.
+        with recorder._lock:
+            recorder._active_frames = [b"\x00" * (1024 * 2)]
         audio_bytes = recorder.stop()
 
         assert audio_bytes is not None
