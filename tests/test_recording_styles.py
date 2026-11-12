@@ -206,12 +206,17 @@ class TestTheIslandHoldsItsShape:
         loud = island._pill_rect()
         assert quiet.width() == loud.width()
 
-    def test_the_wave_is_a_history_not_a_single_value(self, qapp):
+    def test_the_wave_is_more_than_one_value_repeated(self, qapp):
+        """The bars hold their places now rather than scrolling, but they
+        must still differ from each other - a row of identical bars reads
+        as a loading bar, not as a voice."""
         island = self._island()
-        island.set_level(1.0)
-        island.set_level(0.0)
-        assert len(island._history) == island.NUM_BARS
-        assert island._history[-1] != island._history[-2]
+        for _ in range(30):
+            island.set_level(0.8)
+            island.advance()
+        heights = island.bar_heights()
+        assert len(heights) == island.NUM_BARS
+        assert len(set(round(h, 3) for h in heights)) > 2
 
     def test_the_wave_changes_what_is_drawn(self, qapp):
         from PyQt6.QtGui import QPixmap
@@ -238,20 +243,19 @@ class TestTheWaveMovesAtAReadableSpeed:
 
         return _ANIMATION_INTERVAL_MS
 
-    def test_a_quarter_second_of_speech_does_not_fill_the_whole_wave(self, qapp):
+    def test_a_quarter_second_of_speech_does_not_slam_the_bars_up(self, qapp):
+        """The level still has to arrive gently. The bars no longer scroll,
+        so the thing to check is the rise, not how far a wave travelled."""
         from src.ui_pyqt6.recording_styles import build_display
 
         for style in ("island", "waveform"):
             d = build_display(style)
-            frames = int(250 / self._frame_ms())
+            frames = int(100 / self._frame_ms())
             for _ in range(frames):
                 d.set_level(1.0)
                 d.advance()
-            raised = [v for v in d._history if v > 0.05]
-            assert len(raised) <= d.NUM_BARS / 2, (
-                "%s filled %d of its %d bars in a quarter second, so the wave "
-                "crosses the badge in well under a second"
-                % (style, len(raised), d.NUM_BARS)
+            assert d.drawn_level < 0.9, (
+                "%s reached full height in a tenth of a second" % style
             )
 
     def test_one_frame_of_sound_does_not_throw_the_bar_most_of_the_way_up(self, qapp):
@@ -280,3 +284,130 @@ class TestTheWaveMovesAtAReadableSpeed:
             "the idle drift comes round every %.1fs, which reads as a pulse "
             "rather than as breathing" % seconds
         )
+
+
+class TestTheWaveStaysWhereItIs:
+    """The bars were a scrolling history: every frame pushed a new one in
+    at one end and shoved the rest along, so the eye tracked movement
+    sideways across the badge. It reads as a ticker and it is tiring to
+    look at. The bars should hold their places and move up and down."""
+
+    def _loud(self, display, frames=40):
+        for _ in range(frames):
+            display.set_level(1.0)
+            display.advance()
+
+    def test_a_loud_moment_does_not_travel_across_the_badge(self, qapp):
+        """The giveaway of a ticker: a spike appears at one end and walks
+        to the other. Here it should raise the bars where it is heard and
+        leave them where they are."""
+        from src.ui_pyqt6.recording_styles import build_display
+
+        for style in ("island", "waveform"):
+            d = build_display(style)
+            self._loud(d)
+            loud = d.bar_heights()
+            for _ in range(6):
+                d.set_level(1.0)
+                d.advance()
+            later = d.bar_heights()
+            # Nothing should have shifted along by a place.
+            shifted = later[1:] == loud[:-1] or later[:-1] == loud[1:]
+            assert not shifted, "%s is still scrolling its bars along" % style
+
+    def test_quiet_brings_every_bar_down_not_just_the_newest(self, qapp):
+        from src.ui_pyqt6.recording_styles import build_display
+
+        d = build_display("island")
+        self._loud(d)
+        assert max(d.bar_heights()) > 0.4
+        for _ in range(60):
+            d.set_level(0.0)
+            d.advance()
+        assert max(d.bar_heights()) < 0.2, (
+            "bars stayed up after the room went quiet, which is the old "
+            "history still being drawn"
+        )
+
+    def test_the_bars_are_not_one_flat_block(self, qapp):
+        """All bars the same height reads as a loading bar, not a voice."""
+        from src.ui_pyqt6.recording_styles import build_display
+
+        d = build_display("island")
+        self._loud(d)
+        heights = d.bar_heights()
+        assert len(set(round(h, 2) for h in heights)) > 2, (
+            "every bar is the same height"
+        )
+
+    def test_they_keep_moving_while_the_level_holds_steady(self, qapp):
+        """A steady note should still look alive."""
+        from src.ui_pyqt6.recording_styles import build_display
+
+        d = build_display("island")
+        self._loud(d)
+        first = d.bar_heights()
+        for _ in range(12):
+            d.set_level(1.0)
+            d.advance()
+        assert d.bar_heights() != first, "the bars froze"
+
+    def test_the_middle_carries_the_most(self, qapp):
+        """Centre-weighted, the way a voice is drawn - not a flat row."""
+        from src.ui_pyqt6.recording_styles import build_display
+
+        d = build_display("island")
+        self._loud(d)
+        heights = d.bar_heights()
+        middle = heights[len(heights) // 2]
+        assert middle > heights[0] and middle > heights[-1]
+
+
+class TestNothingTravelsAlongTheRow:
+    """Giving each bar a phase offset that steps along with its position
+    builds a travelling wave: the peak walks from one end to the other,
+    slowly. It is subtle, and it is exactly the sideways motion the bars
+    were meant to stop."""
+
+    @staticmethod
+    def _frames(display, count):
+        shots = []
+        for _ in range(count):
+            display.set_level(1.0)
+            display.advance()
+            shots.append(display.bar_heights())
+        return shots
+
+    def test_neighbouring_bars_do_not_lag_each_other_in_step(self, qapp):
+        """The real signature of a travelling wave: every bar repeats what
+        its neighbour did, the same moment later. Measured as the delay
+        that best lines each pair up - if they all share one delay, and it
+        is not zero, the pattern is marching."""
+        from src.ui_pyqt6.recording_styles import build_display
+
+        for style in ("island", "waveform"):
+            d = build_display(style)
+            self._frames(d, 60)
+            shots = self._frames(d, 140)
+            bars = list(zip(*shots))          # one series per bar
+
+            lags = []
+            for i in range(len(bars) - 1):
+                here, next_along = bars[i], bars[i + 1]
+                best, best_lag = None, 0
+                for lag in range(0, 25):
+                    a = here[: len(here) - lag]
+                    b = next_along[lag:]
+                    score = sum(abs(x - y) for x, y in zip(a, b)) / max(1, len(a))
+                    if best is None or score < best:
+                        best, best_lag = score, lag
+                lags.append(best_lag)
+
+            # A marching pattern gives nearly every pair the same lag.
+            commonest = max(set(lags), key=lags.count)
+            share = lags.count(commonest) / len(lags)
+            assert not (commonest != 0 and share > 0.6), (
+                "%s marches: %d of %d neighbouring pairs repeat each other "
+                "%d frames apart" % (style, lags.count(commonest), len(lags),
+                                     commonest)
+            )

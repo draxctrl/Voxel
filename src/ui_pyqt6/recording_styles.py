@@ -97,7 +97,6 @@ class RecordingDisplay(QWidget):
         #: spikes; drawn straight, every syllable makes the badge jump.
         self._drawn = 0.0
         self._phase = 0.0
-        self._frames_since_bar = 0
         self._state = "recording"
         self.elapsed_text = ""
         self.mic_text = ""
@@ -116,12 +115,6 @@ class RecordingDisplay(QWidget):
     ATTACK = 0.16
     RELEASE = 0.055
 
-    #: How many animation frames one bar of a scrolling wave lasts. At 60fps
-    #: a bar every four frames is about fifteen a second, so a fourteen-bar
-    #: wave takes just under a second to cross. Pushing one per frame made
-    #: the whole wave scroll past four times a second, which is the single
-    #: thing that made the badge look frantic.
-    FRAMES_PER_BAR = 4
 
     def set_level(self, level: float) -> None:
         self._level = max(0.0, min(1.0, float(level)))
@@ -150,20 +143,39 @@ class RecordingDisplay(QWidget):
         self._phase += delta
         self.update()
 
-    def _scroll_wave(self) -> None:
-        """Move the scrolling wave on, at most one bar every few frames.
+    def bar_heights(self) -> list[float]:
+        """Each bar's height, 0..1, for a wave that stays where it is.
 
-        Between pushes the newest bar holds the loudest level it has seen,
-        so slowing the scroll does not lose a syllable that happened to
-        fall between two bars.
+        The bars used to be a scrolling history: every frame pushed a new
+        one in at one end and shoved the rest along, so the eye tracked
+        movement sideways across the badge. It read as a ticker and it was
+        tiring to watch. They hold their places now and move up and down
+        with the voice.
+
+        Three things shape a bar: the level, where it sits (the middle
+        carries more, the way a voice is drawn), and a slow wobble of its
+        own so a steady note still looks alive rather than frozen.
         """
-        self._frames_since_bar += 1
-        if self._frames_since_bar < self.FRAMES_PER_BAR:
-            self._history[-1] = max(self._history[-1], self._drawn)
-            return
-        self._frames_since_bar = 0
-        self._history.append(self._drawn)
-        del self._history[: -self.NUM_BARS]
+        count = getattr(self, "NUM_BARS", 0)
+        if count <= 0:
+            return []
+        heights = []
+        for index in range(count):
+            position = index / max(1, count - 1)
+            # 1 in the middle, 0 at either end.
+            centred = 1.0 - abs(position - 0.5) * 2.0
+            shape = 0.34 + 0.66 * (centred ** 0.75)
+            # Each bar wobbles at its own rate and from its own starting
+            # point. The offset is deliberately scattered rather than a
+            # step per bar: a phase that advances evenly along the row is
+            # a wave travelling along it, which is the sideways motion
+            # these bars exist to avoid. The golden angle lands each bar
+            # somewhere unrelated to its neighbours.
+            rate = 1.0 + 0.4 * ((index * 7) % 5) / 4.0
+            offset = (index * 2.39996323) % (2 * math.pi)
+            wobble = 0.78 + 0.22 * math.sin(self._phase * 3.0 * rate + offset)
+            heights.append(max(0.0, min(1.0, self._drawn * shape * wobble)))
+        return heights
 
     # -- geometry -------------------------------------------------------
     def preferred_size(self) -> QSize:
@@ -308,16 +320,6 @@ class WaveformDisplay(RecordingDisplay):
     BAR_MAX = 38
     RADIUS = 26
 
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        # Bars are a history of levels, so the shape of what was said scrolls
-        # across the pill instead of wobbling in place.
-        self._history = [0.0] * self.NUM_BARS
-
-    def set_level(self, level: float) -> None:
-        super().set_level(level)
-        self._scroll_wave()
-
     def preferred_size(self) -> QSize:
         return QSize(self.WIDTH, self.HEIGHT)
 
@@ -349,7 +351,7 @@ class WaveformDisplay(RecordingDisplay):
         x = (self.width() - total_w) / 2
         mid_y = self.height() / 2 + 8
         painter.setPen(Qt.PenStyle.NoPen)
-        for i, value in enumerate(self._history[-self.NUM_BARS:]):
+        for i, value in enumerate(self.bar_heights()):
             height = self.BAR_MIN + value * (self.BAR_MAX - self.BAR_MIN)
             intensity = value
             colour = QColor(
@@ -393,16 +395,6 @@ class IslandDisplay(RecordingDisplay):
     BAR_GAP = 2
     BAR_MIN = 3
     BAR_MAX = 20
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        # A history, so the shape of what was said scrolls through the wave
-        # instead of all the bars wobbling together in place.
-        self._history = [0.0] * self.NUM_BARS
-
-    def set_level(self, level: float) -> None:
-        super().set_level(level)
-        self._scroll_wave()
 
     def preferred_size(self) -> QSize:
         return QSize(self.WIDTH, self.HEIGHT)
@@ -465,7 +457,7 @@ class IslandDisplay(RecordingDisplay):
         total = self.NUM_BARS * (self.BAR_W + self.BAR_GAP) - self.BAR_GAP
         x = left + max(0.0, (span - total) / 2)
         painter.setPen(Qt.PenStyle.NoPen)
-        for value in self._history[-self.NUM_BARS:]:
+        for value in self.bar_heights():
             height = self.BAR_MIN + value * (self.BAR_MAX - self.BAR_MIN)
             colour = QColor(INDIGO_LIGHT)
             colour.setAlphaF(0.45 + 0.55 * value)
