@@ -11,13 +11,13 @@
 [![Windows](https://img.shields.io/badge/Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white)](../../releases)
 [![macOS](https://img.shields.io/badge/macOS-000000?style=for-the-badge&logo=apple&logoColor=white)](#-install-macos)
 [![Python](https://img.shields.io/badge/Python_3.13+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
-[![License: MIT](https://img.shields.io/badge/License-MIT-6366f1?style=for-the-badge)](LICENSE)
+[![License: GPL v3](https://img.shields.io/badge/License-GPL_v3-6366f1?style=for-the-badge)](LICENSE)
 
 <br>
 
 **Free & open-source voice dictation for Windows & macOS**
 <br>
-Powered by Groq Whisper + Llama 3. No subscriptions, no cost.
+Powered by Groq Whisper + GPT-OSS. No subscriptions, no cost.
 
 <br>
 
@@ -42,7 +42,7 @@ Voxel fixes this by running your speech through **two AI steps**:
 
 > 🎤 **Whisper** (speech-to-text) - transcribes your voice accurately
 >
-> ✨ **Llama 3** (text cleanup) - removes filler words, fixes grammar, keeps your tone
+> ✨ **GPT-OSS 120B** (text cleanup) - removes filler words, fixes grammar, keeps your tone
 
 The result: you speak naturally, and clean text appears. **No editing needed.**
 
@@ -52,15 +52,14 @@ The result: you speak naturally, and clean text appears. **No editing needed.**
 |---|---|---|
 | Price | **Free forever** | $8/mo+ |
 | Open source | Yes | No |
-| AI cleanup | Yes (Groq Llama 3) | Yes |
+| AI cleanup | Yes (Groq GPT-OSS 120B) | Yes |
 | Works in any app | Yes | Yes |
 | Customizable hotkey | Yes | Yes |
 | Offline mode | Yes (local Whisper) | No |
 | Dictation history | Yes | Yes |
 | Custom voice commands | Yes | Yes |
-| Multiple dictation modes | Yes (5 built-in) | Yes |
+| Multiple dictation modes | Yes (6 built-in) | Yes |
 | Per-app auto profiles | Yes | Yes |
-| Undo last dictation | Yes | No |
 | Statistics dashboard | Yes | Yes |
 | No account required | Just a free Groq API key | Requires account + payment |
 | Windows + macOS | Yes | Yes |
@@ -79,15 +78,14 @@ The result: you speak naturally, and clean text appears. **No editing needed.**
 
 ### Smart Features
 - 📚 **Dictation History** - every transcription saved, searchable
-- 🎭 **5 Dictation Modes** - Default, Professional Email, Casual, Code Comments, Technical
+- 🎭 **6 Dictation Modes** - Raw, Grammar only (keeps your words), Grammar + tidy up, Professional Email, Code Comments, Technical Writing
 - 🗣️ **Voice Commands** - say "sign off" → insert your signature template
-- ↩️ **Undo Last Dictation** - made a mistake? Ctrl+Shift+Z to revert
 - 📊 **Statistics Dashboard** - track your usage and time saved
 - 🪄 **Auto-switch profile per app** - use "Professional" in Outlook, "Code" in VS Code
-- 💾 **Offline Mode** - use local Whisper model, no internet needed
+- 💾 **Offline Mode** - transcribes on your own machine, nothing leaves it. Included in the download; the first use fetches a model
 
 ### Polish
-- 🎨 **Dark themed UI** with indigo accents
+- 🎨 **Light and dark themes** that follow your Windows setting
 - 🔊 **Audio feedback** (or mute if you prefer)
 - 📋 **Clipboard fallback** - copies text if no text field is focused
 - 📋 **Always copy to clipboard** option
@@ -99,8 +97,9 @@ The result: you speak naturally, and clean text appears. **No editing needed.**
 
 ```
 1. 🟢 Hold your hotkey (default: Ctrl+Shift+Space)
+   (or tap once to start if you switch Activation to toggle)
 2. 🎙️ Speak naturally - say "um" and "like" all you want
-3. 🔴 Release the hotkey
+3. 🔴 Release the hotkey (or tap again in toggle mode)
 4. ✅ Clean, polished text is pasted into whatever app you're using
 ```
 
@@ -133,8 +132,18 @@ Groq's free tier has a limit on audio length per request. If you hit it, just **
 
 ### Option 1: Installer
 Download **`Voxel_Setup.exe`** from [📦 Releases](../../releases), run it, done.
+It installs for you alone, so Windows does not ask for an administrator.
 
-### Option 2: From source
+### Option 2: Portable
+Download **`Voxel-portable.zip`**, unzip it anywhere, and run `Voxel.exe`
+from inside the folder. Keep the folder together - the program is the
+folder, not just the .exe in it.
+
+> 🔒 Windows will warn you about both downloads, because they are not
+> code-signed. Click **More info**, then **Run anyway**. Signing costs a few
+> hundred a year and Voxel is free.
+
+### Option 3: From source
 ```bash
 git clone https://github.com/draxctrl/Voxel.git
 cd Voxel
@@ -164,24 +173,51 @@ Default hotkey on Mac: `Cmd+Shift+Space`
 
 ---
 
+## 🎨 What it looks like
+
+Everything lives in one window now. Pick a topic on the left, and that is
+all you see on the right - no scrolling past settings you were not looking
+for. History and Statistics used to be windows of their own; they are
+sections in here instead.
+
+<div align="center">
+<img src="docs/screenshots/settings-writing-style.png" alt="The settings window: a sidebar on the left, one topic at a time on the right" width="760" />
+<br><br>
+<img src="docs/screenshots/history.png" alt="History: everything you have dictated, searchable, inside the main window" width="760" />
+<br><br>
+<img src="docs/screenshots/appearance-light.png" alt="The same window in light mode" width="760" />
+<br><br>
+<img src="docs/screenshots/stats.png" alt="Stats: words dictated, time saved, and dictations this week" width="760" />
+</div>
+
+What changed in this release:
+
+- **A sidebar instead of one long page.** One topic on screen at a time.
+- **History and Statistics moved inside** and stopped being separate windows.
+- **Plain-language labels** - "Writing style" rather than "Dictation Mode".
+- **Light and dark**, following your Windows setting, or pinned to one.
+- **Settings apply the moment you change them.** There is no Save button.
+- **Offline transcription is in the download**, instead of needing the source.
+
+---
+
 ## ⚙️ Settings
 
-Right-click the tray icon to access Settings, History, or Statistics. Inside Settings:
+Right-click the tray icon and choose **Settings**. Everything below is
+in that one window:
 
-| Setting | Description |
-|---------|-------------|
-| 🔑 **API Key** | Your Groq API key |
-| ⌨️ **Hotkey** | Customizable push-to-talk key combo |
-| ↩️ **Undo hotkey** | Key combo to undo last dictation |
-| 🎭 **Dictation Mode** | 5 built-in cleanup styles + custom profiles |
-| 🗣️ **Voice Commands** | Define trigger phrases that expand to templates |
-| 🎤 **Microphone** | Choose your recording device |
-| 🌍 **Language** | Auto-detect or pick from 9 languages |
-| 🔇 **Mute sounds** | Disable the chime after recording |
-| 🪄 **Auto-switch profile per app** | Use different modes for different apps |
-| 💾 **Offline mode** | Use local Whisper model instead of API |
-| 📋 **Always copy to clipboard** | Keep text on clipboard after paste |
-| 💬 **Show clipboard notice** | Notification when text copied instead of pasted |
+| Section | What is in it |
+|---------|---------------|
+| ✏️ **Writing style** | How much Voxel tidies up what you say, plus offline mode |
+| 🗣️ **Voice commands** | Trigger phrases that expand into templates |
+| 🌍 **Language** | Auto-detect, or pick from 9 languages |
+| 🎤 **Microphone** | Choose your device and watch its level move as you talk |
+| ⌨️ **Shortcuts** | Your hotkey, and hold-to-talk versus press-to-start |
+| 🎨 **Appearance** | Light or dark, and what Voxel shows while you are talking |
+| 🕓 **History** | Everything you have dictated, searchable |
+| 📊 **Stats** | Words dictated and time saved |
+| ⚙️ **General** | Your Groq key, sounds, clipboard behaviour, start with Windows |
+| ℹ️ **About** | Version and licence |
 
 ---
 
@@ -190,7 +226,7 @@ Right-click the tray icon to access Settings, History, or Statistics. Inside Set
 | Component | Technology |
 |-----------|-----------|
 | Language | Python 3.13+ |
-| AI Backend | Groq API (free) - Whisper Large v3 + Llama 3.3 70B |
+| AI Backend | Groq API (free) - Whisper Large v3 + GPT-OSS 120B |
 | Offline Transcription | faster-whisper (CTranslate2) |
 | UI Framework | PyQt6 |
 | Hotkey Listener | pynput |
@@ -209,6 +245,20 @@ If Voxel saves you time, consider supporting development:
 
 [![PayPal](https://img.shields.io/badge/PayPal-Support_Voxel-6366f1?style=for-the-badge&logo=paypal&logoColor=white)](https://paypal.me/draxctrl)
 
-MIT License
-
 </div>
+
+## 📄 Licence
+
+Voxel is released under the **GNU General Public License v3.0** - see
+[LICENSE](LICENSE).
+
+In plain words: you are free to use Voxel, read its source and change it.
+If you share a changed version, you have to share your changes under the
+same licence. Nobody can take this work, close the source and sell it.
+
+Voxel is built on PyQt6, which is itself GPL v3, so this is also the
+licence the project is required to use.
+
+Bundled third-party work keeps its own licence: Phosphor Icons (MIT),
+Inter (SIL Open Font License), and the flag artwork under
+`src/assets/flags/`.

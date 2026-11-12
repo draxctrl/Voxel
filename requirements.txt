@@ -5,5 +5,12 @@ pyautogui
 pyperclip
 pystray
 Pillow
-customtkinter
+PyQt6
 pyinstaller
+
+# Optional — only needed for Offline mode (lazily imported by
+# src/offline_transcriber.py). Install if you want local transcription.
+# faster-whisper
+
+# Dev
+pytest

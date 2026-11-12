@@ -1,219 +1,58 @@
 """
 recording_overlay.py
 --------------------
-A PyQt6 floating recording/processing overlay for Voxel.
+The floating window Voxel shows while it is listening.
 
-The overlay is frameless, always-on-top, and uses a pill-shaped dark card
-with a purple border.  It is thread-safe: show_recording(), show_processing(),
-and hide() may be called from any thread — they emit Qt signals that are
-delivered on the GUI thread.
+The window itself is frameless, always-on-top and translucent; *what* it draws
+is one of the displays in recording_styles.py, chosen by the user. This module
+owns the window, the timers and the thread-safe API; the display owns the
+pixels.
+
+Thread safety: show_recording(), show_processing(), hide(), set_mic_text() and
+show_clipboard_notice() may be called from any thread — they emit Qt signals
+that are delivered on the GUI thread.
 """
 
 from __future__ import annotations
 
-import math
-import time
+import logging
+from typing import Callable
 
-import pyaudio
 from PyQt6.QtCore import (
     QObject,
     QPoint,
-    QRect,
-    QSize,
     Qt,
     QTimer,
     pyqtSignal,
 )
-from PyQt6.QtGui import (
-    QColor,
-    QPainter,
-    QPainterPath,
-    QPen,
-)
 from PyQt6.QtWidgets import (
     QApplication,
-    QHBoxLayout,
-    QLabel,
-    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
+
+from src.ui_pyqt6.recording_styles import DEFAULT_STYLE, build_display
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
-_CARD_BG = QColor(0x13, 0x13, 0x1F, int(255 * 0.92))   # dark indigo @ 92%
-_BORDER_COLOR = QColor(0x3D, 0x3D, 0x8B)                # indigo border
-_DOT_RECORDING = QColor(0x63, 0x66, 0xF1)               # #6366f1 – indigo
-_DOT_PROCESSING = QColor(0x81, 0x8C, 0xF8)              # #818cf8 – lighter indigo
-_TEXT_COLOR = QColor(0xFF, 0xFF, 0xFF)
-_TIMER_COLOR = QColor(0xCC, 0xCC, 0xCC)
-
-_BORDER_RADIUS = 28          # px – makes it pill-shaped
-_BORDER_WIDTH = 1.5          # px
-
-_NUM_BARS = 24
-_BAR_WIDTH = 5               # px
-_BAR_GAP = 3                 # px
-_BAR_MAX_HEIGHT = 38         # px
-_BAR_MIN_HEIGHT = 4          # px
-
-_WAVEFORM_INTERVAL_MS = 16   # ~60 fps
+_ANIMATION_INTERVAL_MS = 16   # ~60 fps
 _TIMER_INTERVAL_MS = 500
 _BOTTOM_MARGIN_PX = 60
 
-_FONT_LABEL_PT = 13
-_FONT_TIMER_PT = 11
+#: Keep the device line inside the badge. Warning strings ("X not found —
+#: using Y") are far longer than device names, so this applies to them too.
+MAX_MIC_CHARS = 28
 
 
-# ---------------------------------------------------------------------------
-# Helper – retrieve the default input device name via PyAudio
-# ---------------------------------------------------------------------------
+def _truncate_mic_name(text: str) -> str:
+    if len(text) > MAX_MIC_CHARS:
+        return text[:MAX_MIC_CHARS - 1] + "…"
+    return text
 
-def _get_mic_name() -> str:
-    try:
-        pa = pyaudio.PyAudio()
-        idx = pa.get_default_input_device_info().get("index", None)
-        if idx is not None:
-            info = pa.get_device_info_by_index(idx)
-            name = str(info.get("name", "Microphone"))
-        else:
-            name = "Microphone"
-        pa.terminate()
-        return name
-    except Exception:
-        return "Microphone"
-
-
-# ---------------------------------------------------------------------------
-# Waveform widget
-# ---------------------------------------------------------------------------
-
-class _WaveformWidget(QWidget):
-    """Renders 24 animated bars driven by overlapping sine waves."""
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self._phase: float = 0.0
-        self._active: bool = False
-
-        w = _NUM_BARS * (_BAR_WIDTH + _BAR_GAP) - _BAR_GAP
-        self.setFixedSize(QSize(w, _BAR_MAX_HEIGHT + 4))
-        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-
-    # ------------------------------------------------------------------
-    def set_active(self, active: bool) -> None:
-        self._active = active
-
-    def advance_phase(self, delta: float = 0.07) -> None:
-        self._phase += delta
-        self.update()
-
-    # ------------------------------------------------------------------
-    def _bar_height(self, bar_index: int) -> float:
-        if not self._active:
-            return _BAR_MIN_HEIGHT
-
-        # Three overlapping sine waves at different frequencies / offsets
-        x = bar_index / _NUM_BARS  # 0..1
-        h = (
-            0.45 * math.sin(2 * math.pi * x * 2.1 + self._phase)
-            + 0.30 * math.sin(2 * math.pi * x * 3.7 - self._phase * 1.3)
-            + 0.25 * math.sin(2 * math.pi * x * 1.3 + self._phase * 0.7 + 1.0)
-        )
-        # h is in [-1, 1]; map to [_BAR_MIN_HEIGHT, _BAR_MAX_HEIGHT]
-        normalised = (h + 1.0) / 2.0            # 0..1
-        return _BAR_MIN_HEIGHT + normalised * (_BAR_MAX_HEIGHT - _BAR_MIN_HEIGHT)
-
-    def _bar_color(self, bar_index: int, height: float) -> QColor:
-        """Vary colour intensity with bar height."""
-        intensity = (height - _BAR_MIN_HEIGHT) / max(1, _BAR_MAX_HEIGHT - _BAR_MIN_HEIGHT)
-        # Interpolate between dim indigo and bright indigo (#6366f1)
-        r = int(30 + intensity * (99 - 30))
-        g = int(30 + intensity * (102 - 30))
-        b = int(90 + intensity * (241 - 90))
-        return QColor(r, g, b, 220)
-
-    def paintEvent(self, _event) -> None:  # noqa: N802
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        widget_h = self.height()
-        x = 0
-        for i in range(_NUM_BARS):
-            bar_h = self._bar_height(i)
-            color = self._bar_color(i, bar_h)
-            painter.setBrush(color)
-            painter.setPen(Qt.PenStyle.NoPen)
-
-            y = (widget_h - bar_h) / 2
-            path = QPainterPath()
-            radius = min(_BAR_WIDTH / 2, bar_h / 2)
-            path.addRoundedRect(float(x), float(y), float(_BAR_WIDTH), float(bar_h), radius, radius)
-            painter.fillPath(path, color)
-
-            x += _BAR_WIDTH + _BAR_GAP
-
-        painter.end()
-
-
-# ---------------------------------------------------------------------------
-# Pulsing dot widget
-# ---------------------------------------------------------------------------
-
-class _PulsingDot(QWidget):
-    """A small circle that fades in/out to signal recording activity."""
-
-    _DOT_SIZE = 12
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self.setFixedSize(_PulsingDot._DOT_SIZE + 4, _PulsingDot._DOT_SIZE + 4)
-        self._alpha: float = 1.0
-        self._pulse_dir: float = -1.0       # -1 = fading out, +1 = fading in
-        self._color = _DOT_RECORDING
-        self._pulsing: bool = False
-        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-
-    def set_color(self, color: QColor) -> None:
-        self._color = color
-        self.update()
-
-    def set_pulsing(self, pulsing: bool) -> None:
-        self._pulsing = pulsing
-        if not pulsing:
-            self._alpha = 1.0
-        self.update()
-
-    def advance_pulse(self, step: float = 0.024) -> None:
-        if not self._pulsing:
-            return
-        self._alpha += self._pulse_dir * step
-        if self._alpha <= 0.25:
-            self._alpha = 0.25
-            self._pulse_dir = 1.0
-        elif self._alpha >= 1.0:
-            self._alpha = 1.0
-            self._pulse_dir = -1.0
-        self.update()
-
-    def paintEvent(self, _event) -> None:  # noqa: N802
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        color = QColor(self._color)
-        color.setAlphaF(self._alpha)
-        painter.setBrush(color)
-        painter.setPen(Qt.PenStyle.NoPen)
-        size = _PulsingDot._DOT_SIZE
-        offset = (self.width() - size) // 2
-        painter.drawEllipse(offset, offset, size, size)
-        painter.end()
-
-
-# ---------------------------------------------------------------------------
-# Main overlay widget
-# ---------------------------------------------------------------------------
 
 class _OverlaySignals(QObject):
     """Carries cross-thread signals for RecordingOverlay."""
@@ -221,19 +60,18 @@ class _OverlaySignals(QObject):
     show_processing_sig = pyqtSignal()
     hide_sig = pyqtSignal()
     show_clipboard_sig = pyqtSignal()
+    set_mic_text_sig = pyqtSignal(str)
 
 
 class RecordingOverlay(QWidget):
-    """
-    Floating, frameless, always-on-top recording/processing indicator.
+    """Floating, frameless, always-on-top recording indicator."""
 
-    Thread safety
-    -------------
-    ``show_recording()``, ``show_processing()``, and ``hide()`` are safe to
-    call from any thread.  They post Qt signals to the GUI thread.
-    """
-
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        style: str = DEFAULT_STYLE,
+        level_provider: Callable[[], float] | None = None,
+    ) -> None:
         super().__init__(parent)
 
         # --- window flags ---------------------------------------------------
@@ -244,6 +82,10 @@ class RecordingOverlay(QWidget):
         )
         self.setWindowFlags(flags)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        # The application stylesheet styles bare QWidget, and Qt type selectors
+        # match subclasses — which paints an opaque rectangle over this window
+        # and its badge. Opt out explicitly.
+        self.setStyleSheet("QWidget { background: transparent; }")
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
 
@@ -251,12 +93,14 @@ class RecordingOverlay(QWidget):
         self._is_recording = False
         self._is_processing = False
         self._elapsed_seconds = 0
+        self._level_provider = level_provider
+        self._style = style
+        self._state = "recording"
+        self._elapsed_text = "0:00"
 
-        # --- mic name -------------------------------------------------------
-        self._mic_name = _get_mic_name()
-        _max_mic_chars = 28
-        if len(self._mic_name) > _max_mic_chars:
-            self._mic_name = self._mic_name[:_max_mic_chars - 1] + "…"
+        # Empty unless something has a warning to show: the badge does not
+        # name a microphone that is working.
+        self._mic_name = ""
 
         # --- cross-thread signals -------------------------------------------
         self._signals = _OverlaySignals()
@@ -266,113 +110,66 @@ class RecordingOverlay(QWidget):
         self._signals.show_clipboard_sig.connect(self._on_show_clipboard)
 
         # --- build UI -------------------------------------------------------
-        self._build_ui()
+        self._layout = QVBoxLayout(self)
+        self._layout.setContentsMargins(0, 0, 0, 0)
+        self._display = None
+        self._install_display(style)
+
+        self._signals.set_mic_text_sig.connect(self._on_set_mic_text)
 
         # --- timers ---------------------------------------------------------
         self._wave_timer = QTimer(self)
-        self._wave_timer.setInterval(_WAVEFORM_INTERVAL_MS)
-        self._wave_timer.timeout.connect(self._tick_waveform)
+        self._wave_timer.setInterval(_ANIMATION_INTERVAL_MS)
+        self._wave_timer.timeout.connect(self._tick_animation)
 
         self._elapsed_timer = QTimer(self)
         self._elapsed_timer.setInterval(_TIMER_INTERVAL_MS)
         self._elapsed_timer.timeout.connect(self._tick_elapsed)
 
-        # --- initial position -----------------------------------------------
+        # The clipboard notice hides itself after a moment. It must be a timer
+        # we can cancel: a fire-and-forget singleShot would hide the *next*
+        # dictation if the user started one within those two seconds.
+        self._notice_timer = QTimer(self)
+        self._notice_timer.setSingleShot(True)
+        self._notice_timer.setInterval(2000)
+        self._notice_timer.timeout.connect(self._on_hide_notice)
+
         self._reposition()
 
     # -----------------------------------------------------------------------
-    # UI construction
+    # Display management
     # -----------------------------------------------------------------------
 
-    def _build_ui(self) -> None:
-        # Outer layout adds room for the border shadow
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
+    @property
+    def style(self) -> str:
+        """The style currently installed — the default if the id was unknown."""
+        return self._display.style_id if self._display is not None else self._style
 
-        # The card is a child widget so we can clip to rounded rect
-        self._card = QWidget(self)
-        self._card.setObjectName("card")
-        outer.addWidget(self._card)
+    def set_style(self, style_id: str) -> None:
+        """Swap the display, keeping the state, the timer and the device line."""
+        # Compare against the id that was *asked* for as well as the one that
+        # resolved, or an unrecognised config value rebuilds the same display
+        # on every save.
+        if self._display is not None and style_id in (self._style, self._display.style_id):
+            return
+        self._install_display(style_id)
 
-        card_layout = QVBoxLayout(self._card)
-        card_layout.setContentsMargins(20, 14, 20, 14)
-        card_layout.setSpacing(8)
-
-        # --- top row: dot + label + timer -----------------------------------
-        top_row = QHBoxLayout()
-        top_row.setSpacing(8)
-
-        self._dot = _PulsingDot(self._card)
-        top_row.addWidget(self._dot, 0, Qt.AlignmentFlag.AlignVCenter)
-
-        self._status_label = QLabel("Listening", self._card)
-        font = self._status_label.font()
-        font.setPointSize(_FONT_LABEL_PT)
-        font.setBold(True)
-        self._status_label.setFont(font)
-        self._status_label.setStyleSheet(f"color: {_TEXT_COLOR.name()};")
-        top_row.addWidget(self._status_label, 0, Qt.AlignmentFlag.AlignVCenter)
-
-        top_row.addStretch(1)
-
-        self._timer_label = QLabel("0:00", self._card)
-        tfont = self._timer_label.font()
-        tfont.setPointSize(_FONT_TIMER_PT)
-        self._timer_label.setFont(tfont)
-        self._timer_label.setStyleSheet(f"color: {_TIMER_COLOR.name()};")
-        top_row.addWidget(self._timer_label, 0, Qt.AlignmentFlag.AlignVCenter)
-
-        card_layout.addLayout(top_row)
-
-        # --- waveform -------------------------------------------------------
-        self._waveform = _WaveformWidget(self._card)
-        card_layout.addWidget(self._waveform, 0, Qt.AlignmentFlag.AlignHCenter)
-
-        # --- mic name -------------------------------------------------------
-        self._mic_label = QLabel(self._mic_name, self._card)
-        mfont = self._mic_label.font()
-        mfont.setPointSize(9)
-        self._mic_label.setFont(mfont)
-        self._mic_label.setStyleSheet("color: rgba(200,180,255,160);")
-        self._mic_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        card_layout.addWidget(self._mic_label)
-
-        self.adjustSize()
-
-    # -----------------------------------------------------------------------
-    # Custom painting – pill-shaped card with border
-    # -----------------------------------------------------------------------
-
-    def paintEvent(self, _event) -> None:  # noqa: N802
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        rect = QRect(0, 0, self.width(), self.height())
-        radius = float(_BORDER_RADIUS)
-
-        # Fill
-        path = QPainterPath()
-        path.addRoundedRect(rect.x(), rect.y(), rect.width(), rect.height(), radius, radius)
-        painter.fillPath(path, _CARD_BG)
-
-        # Border
-        pen = QPen(_BORDER_COLOR, _BORDER_WIDTH)
-        painter.setPen(pen)
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        shrink = _BORDER_WIDTH / 2
-        border_rect = QRect(
-            int(shrink), int(shrink),
-            int(self.width() - _BORDER_WIDTH),
-            int(self.height() - _BORDER_WIDTH),
-        )
-        border_path = QPainterPath()
-        border_path.addRoundedRect(
-            border_rect.x(), border_rect.y(),
-            border_rect.width(), border_rect.height(),
-            radius - shrink, radius - shrink,
-        )
-        painter.drawPath(border_path)
-        painter.end()
+    def _install_display(self, style_id: str) -> None:
+        if self._display is not None:
+            self._layout.removeWidget(self._display)
+            self._display.setParent(None)
+            self._display.deleteLater()
+        self._style = style_id
+        self._display = build_display(style_id, self)
+        # A swap mid-dictation must not reset the badge to "Listening" at 0:00
+        # while a transcription is still running.
+        self._display.set_state(self._state)
+        self._display.set_elapsed(self._elapsed_text)
+        self._display.set_mic_text(self._mic_name)
+        self._display.setFixedSize(self._display.preferred_size())
+        self._layout.addWidget(self._display)
+        self.setFixedSize(self._display.preferred_size())
+        self._reposition()
 
     # -----------------------------------------------------------------------
     # Positioning
@@ -383,7 +180,6 @@ class RecordingOverlay(QWidget):
         if screen is None:
             return
         geom = screen.availableGeometry()
-        self.adjustSize()
         x = geom.x() + (geom.width() - self.width()) // 2
         y = geom.y() + geom.height() - self.height() - _BOTTOM_MARGIN_PX
         self.move(QPoint(x, y))
@@ -392,30 +188,57 @@ class RecordingOverlay(QWidget):
     # Timer callbacks
     # -----------------------------------------------------------------------
 
-    def _tick_waveform(self) -> None:
-        self._waveform.advance_phase()
-        self._dot.advance_pulse()
+    def _tick_animation(self) -> None:
+        """One animation frame: read the live level, then advance the drift.
+
+        A level provider that raises costs this frame and nothing else — the
+        audio subsystem disappearing must not take the recording with it.
+        """
+        # Only a live recording may move the badge. The capture loop keeps
+        # running afterwards, so reading the level during processing would
+        # show the badge reacting to a room that is no longer being recorded.
+        if not self._is_recording:
+            if self._display is not None:
+                self._display.set_level(self._display.level * 0.85)
+                self._display.advance()
+            return
+
+        level = 0.0
+        if self._level_provider is not None:
+            try:
+                level = float(self._level_provider())
+            except Exception as e:
+                logger.debug("Level provider failed: %s", e)
+                level = self._display.level if self._display is not None else 0.0
+        if self._display is not None:
+            self._display.set_level(level)
+            self._display.advance()
 
     def _tick_elapsed(self) -> None:
         self._elapsed_seconds += 1
         mins = self._elapsed_seconds // 60
         secs = self._elapsed_seconds % 60
-        self._timer_label.setText(f"{mins}:{secs:02d}")
+        self._elapsed_text = f"{mins}:{secs:02d}"
+        self._display.set_elapsed(self._elapsed_text)
 
     # -----------------------------------------------------------------------
-    # Internal slot implementations (always run on GUI thread)
+    # Internal slots (always run on the GUI thread)
     # -----------------------------------------------------------------------
 
     def _on_show_recording(self) -> None:
         self._is_recording = True
         self._is_processing = False
         self._elapsed_seconds = 0
-        self._timer_label.setText("0:00")
+        self._state = "recording"
+        self._elapsed_text = "0:00"
+        self._notice_timer.stop()
 
-        self._status_label.setText("Listening")
-        self._dot.set_color(_DOT_RECORDING)
-        self._dot.set_pulsing(True)
-        self._waveform.set_active(True)
+        # Nothing from the previous dictation may leak into this one: a stale
+        # level would open the badge mid-shout.
+        self._display.set_level(0.0)
+        self._display.set_elapsed("0:00")
+        self._display.set_mic_text(self._mic_name)
+        self._display.set_state("recording")
 
         self._wave_timer.start()
         self._elapsed_timer.start()
@@ -427,13 +250,10 @@ class RecordingOverlay(QWidget):
     def _on_show_processing(self) -> None:
         self._is_processing = True
         self._is_recording = False
+        self._state = "processing"
+        self._notice_timer.stop()
 
-        self._status_label.setText("Processing")
-        self._dot.set_color(_DOT_PROCESSING)
-        self._dot.set_pulsing(False)
-        self._waveform.set_active(True)   # bars keep animating
-
-        # Stop elapsed timer but keep waveform animation running
+        self._display.set_state("processing")
         self._elapsed_timer.stop()
         if not self._wave_timer.isActive():
             self._wave_timer.start()
@@ -445,40 +265,56 @@ class RecordingOverlay(QWidget):
     def _on_show_clipboard(self) -> None:
         self._is_recording = False
         self._is_processing = False
+        self._state = "clipboard"
+        self._elapsed_text = ""
 
         self._wave_timer.stop()
         self._elapsed_timer.stop()
-        self._dot.set_pulsing(False)
-        self._waveform.set_active(False)
 
-        self._status_label.setText("Copied to clipboard")
-        self._dot.set_color(_DOT_RECORDING)  # indigo theme color
-        self._timer_label.setText("")
-        self._mic_label.setText("Paste with Ctrl+V")
+        self._display.set_state("clipboard")
+        self._display.set_level(0.0)
+        self._display.set_elapsed("")
+        # Deliberately not stored in _mic_name: this is a one-off notice, not
+        # the persistent device line.
+        self._display.set_mic_text("Paste with Ctrl+V")
 
         self._reposition()
         super().show()
         self.raise_()
 
-        # Auto-hide after 2 seconds
-        QTimer.singleShot(2000, self._on_hide)
+        self._notice_timer.start()
+
+    def _on_hide_notice(self) -> None:
+        """Hide the clipboard notice — unless a new dictation has started."""
+        if self._is_recording or self._is_processing:
+            return
+        self._on_hide()
+
+    def _on_set_mic_text(self, text: str) -> None:
+        """Set the device line, and make it the value _on_hide() restores.
+
+        _on_hide resets the line from _mic_name, so updating only the display
+        would show a mic warning once and then lose it on the next recording.
+        """
+        self._mic_name = _truncate_mic_name(text)
+        self._display.set_mic_text(self._mic_name)
 
     def _on_hide(self) -> None:
         self._is_recording = False
         self._is_processing = False
+        self._notice_timer.stop()
 
+        # A hidden badge animating at 60fps burns a core for nothing.
         self._wave_timer.stop()
         self._elapsed_timer.stop()
-        self._dot.set_pulsing(False)
-        self._waveform.set_active(False)
 
-        # Restore mic label for next use
-        self._mic_label.setText(self._mic_name)
+        self._display.set_level(0.0)
+        self._display.set_mic_text(self._mic_name)
 
         super().hide()
 
     # -----------------------------------------------------------------------
-    # Public API – thread-safe
+    # Public API — thread-safe
     # -----------------------------------------------------------------------
 
     def show_recording(self) -> None:
@@ -497,8 +333,16 @@ class RecordingOverlay(QWidget):
         """Show a brief 'Copied to clipboard' notice. Thread-safe."""
         self._signals.show_clipboard_sig.emit()
 
-    # Override show() so direct calls also go through our setup
+    def set_mic_text(self, text: str) -> None:
+        """Set the device line. Thread-safe.
+
+        Used to name the microphone actually in use, or to warn when it isn't
+        the one the user chose.
+        """
+        self._signals.set_mic_text_sig.emit(text)
+
     def show(self) -> None:  # noqa: A003
+        """Direct show() calls go through the recording setup."""
         self.show_recording()
 
 
@@ -507,17 +351,22 @@ class RecordingOverlay(QWidget):
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
+    import math
     import sys
+    import time
 
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
 
-    overlay = RecordingOverlay()
+    start = time.time()
+    overlay = RecordingOverlay(
+        style=sys.argv[1] if len(sys.argv) > 1 else DEFAULT_STYLE,
+        level_provider=lambda: 0.5 + 0.5 * math.sin((time.time() - start) * 3),
+    )
     overlay.show_recording()
 
-    # After 4 s switch to processing, after 6 s hide
-    QTimer.singleShot(4000, overlay.show_processing)
-    QTimer.singleShot(6000, overlay.hide)
-    QTimer.singleShot(6500, app.quit)
+    QTimer.singleShot(6000, overlay.show_processing)
+    QTimer.singleShot(8000, overlay.hide)
+    QTimer.singleShot(8500, app.quit)
 
     sys.exit(app.exec())

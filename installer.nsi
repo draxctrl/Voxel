@@ -20,6 +20,11 @@ RequestExecutionLevel user
 
 ; Pages
 !insertmacro MUI_PAGE_WELCOME
+; Voxel is free software under the GPL v3. The licence grants rights
+; rather than taking them away, so it is shown, not click-wrapped.
+!define MUI_LICENSEPAGE_TEXT_BOTTOM "Voxel is free software under the GNU General Public License v3. Click Next to continue."
+!define MUI_LICENSEPAGE_BUTTON "Next"
+!insertmacro MUI_PAGE_LICENSE "LICENSE"
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
@@ -31,18 +36,25 @@ RequestExecutionLevel user
 !insertmacro MUI_LANGUAGE "English"
 
 ; Version info
-VIProductVersion "1.0.0.0"
+VIProductVersion "3.0.0.0"
 VIAddVersionKey "ProductName" "Voxel"
 VIAddVersionKey "FileDescription" "Voxel Voice Dictation"
-VIAddVersionKey "FileVersion" "1.0.0"
-VIAddVersionKey "ProductVersion" "1.0.0"
+VIAddVersionKey "FileVersion" "3.0.0"
+VIAddVersionKey "ProductVersion" "3.0.0"
+VIAddVersionKey "LegalCopyright" "Copyright (C) 2026 draxctrl. Free software under the GNU GPL v3."
 
 ; Installer
 Section "Install"
     SetOutPath "$INSTDIR"
 
-    ; Main executable
-    File "dist\Voxel.exe"
+    ; The whole program folder. Voxel ships as a folder rather than as one
+    ; file because it carries the offline transcription engine, and a single
+    ; file would unpack all of it on every launch.
+    File /r "dist\Voxel\*.*"
+
+    ; The GPL requires that everyone who receives the program also
+    ; receives the licence, so it ships beside the executable.
+    File "LICENSE"
 
     ; Create Start Menu shortcuts
     CreateDirectory "$SMPROGRAMS\Voxel"
@@ -60,7 +72,7 @@ Section "Install"
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Voxel" "UninstallString" '"$INSTDIR\Uninstall.exe"'
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Voxel" "DisplayIcon" "$INSTDIR\Voxel.exe"
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Voxel" "Publisher" "Voxel"
-    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Voxel" "DisplayVersion" "1.0.0"
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Voxel" "DisplayVersion" "3.0.0"
     WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Voxel" "NoModify" 1
     WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Voxel" "NoRepair" 1
 SectionEnd
@@ -81,6 +93,7 @@ Section "Uninstall"
 
     ; Remove files — delete self last
     Delete "$INSTDIR\Voxel.exe"
+    Delete "$INSTDIR\LICENSE"
     Delete "$INSTDIR\Uninstall.exe"
     RMDir /r "$INSTDIR"
 SectionEnd

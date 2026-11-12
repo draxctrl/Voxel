@@ -16,12 +16,17 @@ _VK_CODES = {
 }
 
 
+def _vk_pressed(vk: int) -> bool:
+    """Is this virtual key physically down right now?"""
+    return bool(ctypes.windll.user32.GetAsyncKeyState(vk) & 0x8000)
+
+
 def _is_key_physically_pressed(vk_name: str) -> bool:
-    """Check if a key is currently pressed using Win32 GetAsyncKeyState."""
+    """Check if a named modifier is currently pressed."""
     vk = _VK_CODES.get(vk_name)
     if vk is None:
         return False
-    return bool(ctypes.windll.user32.GetAsyncKeyState(vk) & 0x8000)
+    return _vk_pressed(vk)
 
 _MODIFIER_MAP = {
     "<ctrl>": ("ctrl_l", "ctrl_r"),
@@ -66,10 +71,21 @@ class HotkeyListener:
         on_press: Callable,
         on_release: Callable,
         min_hold_duration: float = 0.3,
+        activation_mode: str = "hold",
+        on_cancel: Callable | None = None,
     ):
         self._on_press_cb = on_press
         self._on_release_cb = on_release
+        #: Called instead of on_release when a press was too short to count.
+        #: on_press has already started recording by then, so something has to
+        #: end it — without this the recording ran until the max-duration
+        #: timer and looked to the user like the hotkey had stuck.
+        self._on_cancel_cb = on_cancel
         self._min_hold_duration = min_hold_duration
+        #: "hold" = press and hold to record; "toggle" = press to start, press
+        #: again to stop. In toggle mode the release is meaningless, so the tap
+        #: filter and the release-polling fallback are both skipped.
+        self.activation_mode = activation_mode
 
         self._modifier_keys, self._trigger_key = _parse_hotkey(hotkey_str)
         self._modifier_only = self._trigger_key is None
@@ -143,7 +159,30 @@ class HotkeyListener:
                 return False
         return True
 
+    @property
+    def is_modifier_only(self) -> bool:
+        """True when the hotkey is modifiers alone, with no trigger key.
+
+        Such a combo cannot be used with toggle activation: every Ctrl+Shift
+        press would flip recording on or off.
+        """
+        return self._modifier_only
+
     def _handle_press(self) -> None:
+        if self._toggle_mode:
+            # Holding a key repeats its press event; _is_held makes this fire
+            # once per real press rather than many times per hold.
+            if self._is_held:
+                return
+            self._is_held = True
+            logger.info("Hotkey pressed (toggle)")
+            self._on_press_cb()
+            # Same safety net hold mode uses: if the key-up event never arrives,
+            # _is_held would stick and every later press would be ignored,
+            # leaving the hotkey dead until restart.
+            self._start_toggle_rearm_poll()
+            return
+
         if self._is_held:
             return
         self._is_held = True
@@ -153,19 +192,53 @@ class HotkeyListener:
         # Start polling as a safety net for missed release events
         self._start_release_poll()
 
+    @property
+    def _toggle_mode(self) -> bool:
+        return self.activation_mode == "toggle"
+
     def _handle_release(self) -> None:
+        # In toggle mode the release carries no meaning beyond re-arming the
+        # next press; the recording is stopped by pressing again.
+        if self._toggle_mode:
+            self._is_held = False
+            return
+
         if not self._is_held:
             return
         self._is_held = False
 
         hold_duration = time.time() - self._press_time
         if hold_duration < self._min_hold_duration:
-            logger.debug("Tap ignored (%.0fms < %dms)",
-                         hold_duration * 1000, self._min_hold_duration * 1000)
+            logger.info("Tap cancelled (%.0fms < %dms)",
+                        hold_duration * 1000, self._min_hold_duration * 1000)
+            if self._on_cancel_cb is not None:
+                self._on_cancel_cb()
             return
 
         logger.info("Hotkey released after %.0fms", hold_duration * 1000)
         self._on_release_cb()
+
+    def _rearm_toggle(self) -> None:
+        """Clear the press-edge latch once the keys are physically up.
+
+        Unlike hold mode's poll, this fires no callback — in toggle mode the
+        recording is stopped by the *next* press, not by letting go.
+        """
+        if not self._is_held:
+            return
+        if self._any_modifier_variant_held() and self._trigger_still_held():
+            return
+        logger.debug("Toggle re-armed via polling fallback")
+        self._is_held = False
+
+    def _start_toggle_rearm_poll(self) -> None:
+        def _poll():
+            while self._is_held:
+                time.sleep(0.05)
+                self._rearm_toggle()
+
+        t = threading.Thread(target=_poll, daemon=True)
+        t.start()
 
     def _start_release_poll(self) -> None:
         """Poll physical key state to catch releases that pynput misses."""
@@ -193,15 +266,36 @@ class HotkeyListener:
                 return False
         return True
 
+    def _trigger_vk(self) -> int | None:
+        """The trigger key's Windows virtual key code, or None.
+
+        pynput's named keys (Key.space, Key.f1 …) carry their code on
+        ``.value.vk``, not on the member itself. Reading only ``.vk`` left
+        every named trigger unpollable, so the release poll fell through to
+        "assume still held" and could never catch a missed key-up.
+        """
+        key = self._trigger_key
+        if key is None:
+            return None
+        name = getattr(key, "name", None)
+        if name in _VK_CODES:
+            return _VK_CODES[name]
+        vk = getattr(key, "vk", None)
+        if vk:
+            return int(vk)
+        vk = getattr(getattr(key, "value", None), "vk", None)
+        if vk:
+            return int(vk)
+        return None
+
     def _trigger_still_held(self) -> bool:
-        """Check if the trigger key is still held (for non-modifier hotkeys)."""
-        if self._trigger_key is None:
+        """Is the trigger key still physically down?
+
+        True for a modifier-only hotkey, which has no trigger key, and true
+        for a key whose code cannot be resolved — in that case the modifier
+        check is the only safety net there is.
+        """
+        vk = self._trigger_vk()
+        if vk is None:
             return True
-        if hasattr(self._trigger_key, 'name'):
-            vk_name = self._trigger_key.name
-            if vk_name in _VK_CODES:
-                return _is_key_physically_pressed(vk_name)
-        # For regular keys, check via GetAsyncKeyState with vk_code
-        if hasattr(self._trigger_key, 'vk') and self._trigger_key.vk:
-            return bool(ctypes.windll.user32.GetAsyncKeyState(self._trigger_key.vk) & 0x8000)
-        return True  # Can't check, assume still held
+        return _vk_pressed(vk)

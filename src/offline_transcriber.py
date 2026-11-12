@@ -29,6 +29,27 @@ def _get_models_dir() -> str:
     return path
 
 
+def is_available() -> bool:
+    """Whether offline transcription can run at all on this copy of Voxel.
+
+    The packaged build leaves faster-whisper and its runtime out - they
+    are about 150MB and most people never turn offline mode on - so the
+    switch has to ask before it offers.
+    """
+    try:
+        import faster_whisper  # noqa: F401
+    except Exception:
+        return False
+    return True
+
+
+UNAVAILABLE_NOTICE = (
+    "Offline transcription is not included in this build of Voxel. It needs "
+    "about 150 MB of extra components, so it is left out to keep the download "
+    "small. Run Voxel from source to use it."
+)
+
+
 def is_model_downloaded(model_size: str = "base") -> bool:
     """Check if a local Whisper model is already downloaded."""
     models_dir = _get_models_dir()
