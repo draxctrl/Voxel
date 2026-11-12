@@ -18,6 +18,7 @@ from src.transcriber import Transcriber
 from src.text_cleaner import TextCleaner
 from src.text_injector import TextInjector
 from src.hotkey_listener import HotkeyListener
+from src import taskbar_identity
 from src.tray_app import TrayApp
 from src.history import HistoryStore
 from src.profiles import ProfileManager, resolve_effective_profile
@@ -67,6 +68,12 @@ def _get_assets_dir() -> str:
 
 class VoxelApp:
     def __init__(self):
+        # Before the application exists: Windows decides the taskbar
+        # icon and the grouping from this, and once a window is up it
+        # has already chosen. Without it Voxel wears the icon of
+        # whatever launched it - the Python logo, run from source.
+        taskbar_identity.claim()
+
         self._qapp = QApplication(sys.argv)
         self._qapp.setQuitOnLastWindowClosed(False)
 
