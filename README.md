@@ -42,7 +42,7 @@ Voxel fixes this by running your speech through **two AI steps**:
 
 > 🎤 **Whisper** (speech-to-text) - transcribes your voice accurately
 >
-> ✨ **Llama 3** (text cleanup) - removes filler words, fixes grammar, keeps your tone
+> ✨ **GPT-OSS 120B** (text cleanup) - removes filler words, fixes grammar, keeps your tone
 
 The result: you speak naturally, and clean text appears. **No editing needed.**
 
@@ -52,7 +52,7 @@ The result: you speak naturally, and clean text appears. **No editing needed.**
 |---|---|---|
 | Price | **Free forever** | $8/mo+ |
 | Open source | Yes | No |
-| AI cleanup | Yes (Groq Llama 3) | Yes |
+| AI cleanup | Yes (Groq GPT-OSS 120B) | Yes |
 | Works in any app | Yes | Yes |
 | Customizable hotkey | Yes | Yes |
 | Offline mode | Yes (local Whisper) | No |
@@ -85,7 +85,7 @@ The result: you speak naturally, and clean text appears. **No editing needed.**
 - 💾 **Offline Mode** - use local Whisper model, no internet needed
 
 ### Polish
-- 🎨 **Dark themed UI** with indigo accents
+- 🎨 **Light and dark themes** that follow your Windows setting
 - 🔊 **Audio feedback** (or mute if you prefer)
 - 📋 **Clipboard fallback** - copies text if no text field is focused
 - 📋 **Always copy to clipboard** option
@@ -163,51 +163,48 @@ Default hotkey on Mac: `Cmd+Shift+Space`
 
 ---
 
-## 🎨 Coming in the next release
+## 🎨 What it looks like
 
-Voxel is being redesigned. **These are mockups of the new interface, not the
-app as it ships today** — the current version still looks like the settings
-window described below.
+Everything lives in one window now. Pick a topic on the left, and that is
+all you see on the right - no scrolling past settings you were not looking
+for. History and Statistics used to be windows of their own; they are
+sections in here instead.
 
 <div align="center">
-<img src="docs/mockups/settings-writing-style.png" alt="The new settings window: a sidebar on the left, one topic at a time on the right" width="760" />
+<img src="docs/screenshots/settings-writing-style.png" alt="The settings window: a sidebar on the left, one topic at a time on the right" width="760" />
 <br><br>
-<img src="docs/mockups/settings-history.png" alt="History, now a section inside the main window instead of a separate one" width="760" />
+<img src="docs/screenshots/history.png" alt="History: everything you have dictated, searchable, inside the main window" width="760" />
+<br><br>
+<img src="docs/screenshots/appearance-light.png" alt="The same window in light mode" width="760" />
 </div>
 
-What changes:
+What changed in this release:
 
-- **A sidebar instead of one long page.** One topic on screen at a time, nothing to scroll past.
-- **History and Statistics move inside the main window** and stop being separate windows.
-- **Plain-language labels** — "Writing style" rather than "Dictation Mode".
-- **Light and dark themes**, following your Windows setting.
-- **A first run that sets you up in about a minute** and ends with you having already dictated something.
-
-<div align="center">
-<img src="docs/mockups/first-run-2-setup.png" alt="First run: choosing between the free Groq key and fully offline transcription" width="520" />
-<img src="docs/mockups/first-run-4-try-it.png" alt="First run: trying a dictation inside Voxel before you finish setup" width="520" />
-</div>
+- **A sidebar instead of one long page.** One topic on screen at a time.
+- **History and Statistics moved inside** and stopped being separate windows.
+- **Plain-language labels** - "Writing style" rather than "Dictation Mode".
+- **Light and dark**, following your Windows setting, or pinned to one.
+- **Settings apply the moment you change them.** There is no Save button.
 
 ---
 
 ## ⚙️ Settings
 
-Right-click the tray icon to access Settings, History, or Statistics. Inside Settings:
+Right-click the tray icon and choose **Settings**. Everything below is
+in that one window:
 
-| Setting | Description |
-|---------|-------------|
-| 🔑 **API Key** | Your Groq API key |
-| ⌨️ **Hotkey** | Customizable key combo |
-| 🔁 **Activation** | Hold to talk, or press to start and press to stop |
-| 🎭 **Dictation Mode** | 6 built-in cleanup styles + custom profiles |
-| 🗣️ **Voice Commands** | Define trigger phrases that expand to templates |
-| 🎤 **Microphone** | Choose your recording device (remembered by name) |
-| 🌍 **Language** | Auto-detect or pick from 9 languages |
-| 🔇 **Mute sounds** | Disable the chime after recording |
-| 🪄 **Auto-switch profile per app** | Use different modes for different apps |
-| 💾 **Offline mode** | Use local Whisper model instead of API |
-| 📋 **Always copy to clipboard** | Keep text on clipboard after paste |
-| 💬 **Show clipboard notice** | Notification when text copied instead of pasted |
+| Section | What is in it |
+|---------|---------------|
+| ✏️ **Writing style** | How much Voxel tidies up what you say, plus offline mode |
+| 🗣️ **Voice commands** | Trigger phrases that expand into templates |
+| 🌍 **Language** | Auto-detect, or pick from 9 languages |
+| 🎤 **Microphone** | Choose your device and watch its level move as you talk |
+| ⌨️ **Shortcuts** | Your hotkey, and hold-to-talk versus press-to-start |
+| 🎨 **Appearance** | Light or dark, and what Voxel shows while you are talking |
+| 🕓 **History** | Everything you have dictated, searchable |
+| 📊 **Stats** | Words dictated and time saved |
+| ⚙️ **General** | Your Groq key, sounds, clipboard behaviour, start with Windows |
+| ℹ️ **About** | Version and licence |
 
 ---
 
