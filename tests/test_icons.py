@@ -28,14 +28,35 @@ class TestTileArtwork:
             assert img.size == (size, size)
             assert img.mode == "RGBA"
 
-    def test_the_three_variants_are_genuinely_different_artwork(self):
-        """Soft glow, tightened glow and flattened disc — not one drawing."""
+    def test_the_flattened_variant_drops_the_bars(self):
+        """The whole point of per-size artwork: five separate shapes cannot
+        be told apart across sixteen pixels, so the small frame is the V
+        alone. full and tight are the same drawing with heavier strokes,
+        which is all 32px needs once there is no glow to turn to mush."""
         from tools.generate_icons import draw_tile
         full = draw_tile(64, "full")
         tight = draw_tile(64, "tight")
         flat = draw_tile(64, "flat")
-        assert _difference(full, tight) > 3
-        assert _difference(tight, flat) > 3
+        assert _difference(full, flat) > 6, "the flat variant still has bars"
+        assert _difference(tight, flat) > 6, "the flat variant still has bars"
+        assert _difference(full, tight) > 0.5, "tight is not drawn any heavier"
+
+    def test_the_bars_are_only_in_the_wide_variants(self):
+        """Measured where a bar is and the V is not: the outer sixth of the
+        tile. Empty there means the bars are gone."""
+        from tools.generate_icons import draw_tile
+
+        def left_edge_ink(variant: str) -> int:
+            img = draw_tile(128, variant).convert("RGBA")
+            return sum(
+                1
+                for y in range(40, 88)
+                for x in range(8, 24)
+                if img.getpixel((x, y))[0] > 200
+            )
+
+        assert left_edge_ink("full") > 20, "no bar beside the V"
+        assert left_edge_ink("flat") == 0, "the flat variant kept its bars"
 
     def test_drawing_is_deterministic(self):
         """The committed art is checked against the generator, so the
@@ -58,24 +79,28 @@ class TestTheIcoFile:
     def test_it_carries_every_size_windows_asks_for(self):
         assert set(self._frames()) >= {16, 32, 48, 256}
 
-    def test_the_small_frames_are_not_the_big_one_scaled_down(self):
-        """The whole reason for per-size artwork: a soft glow turns to mush at
-        tray size, so 16 and 32 are drawn differently, not resampled."""
+    def test_the_sixteen_px_frame_is_not_the_big_one_scaled_down(self):
+        """The reason for per-size artwork. 32px keeps the bars - without a
+        glow the mark survives the reduction - but 16px is drawn as the V
+        alone, so it must not look like a shrunken 256."""
         frames = self._frames()
-        big = frames[256]
-        for small in (16, 32):
-            assert _difference(frames[small], big) > 6, (
-                f"the {small}px frame looks like a scaled copy of the 256px one"
-            )
+        assert _difference(frames[16], frames[256]) > 6, (
+            "the 16px frame looks like a scaled copy of the 256px one"
+        )
 
-    def test_the_sixteen_px_frame_is_a_light_mark_on_a_dark_tile(self):
-        """At tray size it still has to read as Voxel."""
+    def test_the_sixteen_px_frame_is_a_light_mark_on_a_coloured_tile(self):
+        """At tray size it still has to read as Voxel, which needs the mark
+        and the tile to be far apart in brightness - whatever the tile's
+        colour. Measured, rather than assumed from the palette."""
         frame = self._frames()[16].convert("RGBA")
-        corner = frame.getpixel((1, 1))
-        centre_column = [frame.getpixel((8, y)) for y in range(3, 13)]
-        brightest = max(sum(p[:3]) for p in centre_column)
-        assert sum(corner[:3]) / 3 < 90, "the tile is not dark"
-        assert brightest / 3 > 150, "there is no light mark in the middle"
+        tile = frame.getpixel((8, 2))          # above the V, inside the tile
+        column = [frame.getpixel((8, y)) for y in range(4, 14)]
+        brightest = max(sum(p[:3]) / 3 for p in column)
+        tile_brightness = sum(tile[:3]) / 3
+        assert brightest > 200, "there is no light mark in the middle"
+        assert brightest - tile_brightness > 60, (
+            "the mark is too close in brightness to the tile behind it"
+        )
 
     def test_the_committed_icon_matches_what_the_generator_produces(self, tmp_path):
         """Art and generator cannot drift apart without this failing."""
