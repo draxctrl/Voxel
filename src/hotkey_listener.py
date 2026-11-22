@@ -73,6 +73,7 @@ class HotkeyListener:
         min_hold_duration: float = 0.3,
         activation_mode: str = "hold",
         on_cancel: Callable | None = None,
+        on_interrupt: Callable | None = None,
     ):
         self._on_press_cb = on_press
         self._on_release_cb = on_release
@@ -81,6 +82,11 @@ class HotkeyListener:
         #: end it — without this the recording ran until the max-duration
         #: timer and looked to the user like the hotkey had stuck.
         self._on_cancel_cb = on_cancel
+        #: Called when another key is pressed during a modifier-only hold -
+        #: the user was typing a shortcut, not dictating. Falls back to
+        #: on_cancel. Kept apart because a short hold and an interruption
+        #: can mean different things to the app.
+        self._on_interrupt_cb = on_interrupt or on_cancel
         self._min_hold_duration = min_hold_duration
         #: "hold" = press and hold to record; "toggle" = press to start, press
         #: again to stop. In toggle mode the release is meaningless, so the tap
@@ -92,6 +98,15 @@ class HotkeyListener:
         self._pressed_modifiers: set[str] = set()
         self._is_held = False
         self._press_time: float = 0.0
+        #: Tap tracking for a modifier-only hotkey in toggle mode. Armed once
+        #: every required modifier is down; spoiled by any other key pressed
+        #: before they come back up (Ctrl + Alt + Del, Ctrl + Alt + V ...).
+        self._tap_armed = False
+        self._tap_spoiled = False
+        #: Set when another key interrupted a modifier-only hold; nothing
+        #: re-triggers it until one of its modifiers comes back up, so an
+        #: autorepeating Space cannot restart it.
+        self._hold_spoiled = False
         self._listener: keyboard.Listener | None = None
 
         logger.info("Hotkey configured: modifiers=%s, trigger=%s, modifier_only=%s",
@@ -115,6 +130,9 @@ class HotkeyListener:
                 pass
             self._listener = None
         self._is_held = False
+        self._tap_armed = False
+        self._tap_spoiled = False
+        self._hold_spoiled = False
         self._pressed_modifiers.clear()
         logger.info("Hotkey listener stopped")
 
@@ -123,14 +141,51 @@ class HotkeyListener:
             return key.name
         return None
 
+    @property
+    def _tap_to_toggle(self) -> bool:
+        """A modifier-only hotkey in toggle mode fires on a clean tap.
+
+        Firing the moment the keys go down would flip recording on every
+        Ctrl + Alt + Del or Ctrl + Alt + V. Waiting for the keys to come
+        back up with nothing else pressed in between tells the two apart.
+        """
+        return self._modifier_only and self._toggle_mode
+
     def _on_key_press(self, key) -> None:
         name = self._key_name(key)
         if name and name in self._modifier_keys:
             self._pressed_modifiers.add(name)
 
+        if self._tap_to_toggle:
+            self._forget_stale_modifiers(name)
+            if self._tap_armed and not self._all_modifiers_held():
+                # Armed by keys Windows never told us were released
+                # (Ctrl + Alt + Del goes to the secure screen).
+                self._tap_armed = False
+                self._tap_spoiled = False
+            if name and name in self._modifier_keys:
+                if not self._tap_armed and self._all_modifiers_held():
+                    self._tap_armed = True
+                    self._tap_spoiled = False
+            elif self._tap_armed:
+                self._tap_spoiled = True
+            return
+
         if self._modifier_only:
+            # Another key while a modifier-only hold is down means the user
+            # was typing a shortcut (Ctrl + Alt + Del, or a press-to-start
+            # key such as Ctrl + Alt + Space), not dictating. Throw it away.
+            is_modifier = bool(name and name in self._modifier_keys)
+            if not is_modifier:
+                if self._is_held:
+                    self._is_held = False
+                    self._hold_spoiled = True
+                    logger.info("Hold cancelled: another key was pressed")
+                    if self._on_interrupt_cb is not None:
+                        self._on_interrupt_cb()
+                return
             # Modifier-only combo: trigger when all required modifiers are held
-            if self._all_modifiers_held():
+            if not self._hold_spoiled and self._all_modifiers_held():
                 self._handle_press()
         else:
             # Normal combo: trigger when trigger key pressed with modifiers held
@@ -140,16 +195,40 @@ class HotkeyListener:
     def _on_key_release(self, key) -> None:
         name = self._key_name(key)
 
+        if self._tap_to_toggle:
+            if name and name in self._modifier_keys:
+                self._pressed_modifiers.discard(name)
+                if self._tap_armed:
+                    clean = not self._tap_spoiled
+                    self._tap_armed = False
+                    self._tap_spoiled = False
+                    if clean:
+                        logger.info("Hotkey tapped (toggle)")
+                        self._on_press_cb()
+            return
+
         if self._modifier_only:
             # Release fires when ANY of the required modifiers is released
             if name and name in self._modifier_keys:
                 self._pressed_modifiers.discard(name)
+                self._hold_spoiled = False
                 self._handle_release()
         else:
             if name and name in self._modifier_keys:
                 self._pressed_modifiers.discard(name)
             if key == self._trigger_key:
                 self._handle_release()
+
+    def _forget_stale_modifiers(self, current: str | None) -> None:
+        """Drop modifiers we think are down but Windows says are not.
+
+        The key in the current event is kept: a low-level hook runs before
+        Windows updates the physical state for that key.
+        """
+        self._pressed_modifiers = {
+            m for m in self._pressed_modifiers
+            if m == current or _is_key_physically_pressed(m)
+        }
 
     def _all_modifiers_held(self) -> bool:
         """Check that at least one variant of each required modifier group is pressed."""
@@ -163,8 +242,8 @@ class HotkeyListener:
     def is_modifier_only(self) -> bool:
         """True when the hotkey is modifiers alone, with no trigger key.
 
-        Such a combo cannot be used with toggle activation: every Ctrl+Shift
-        press would flip recording on or off.
+        In toggle mode such a combo fires on a clean tap rather than on
+        key-down, so shortcuts that begin with the same keys are left alone.
         """
         return self._modifier_only
 
@@ -299,3 +378,52 @@ class HotkeyListener:
         if vk is None:
             return True
         return _vk_pressed(vk)
+
+
+def same_hotkey(a: str, b: str) -> bool:
+    """Do two stored hotkeys name the same keys, whatever their order?"""
+    if not a or not b:
+        return False
+    return _parse_hotkey(a) == _parse_hotkey(b)
+
+
+def hotkeys_clash(a: str, b: str) -> bool:
+    """Would one press set off both hotkeys?
+
+    The same keys clash. So does the same final key where one set of
+    modifiers contains the other (Ctrl + Space and Ctrl + Shift + Space):
+    a combo still fires with extra modifiers down. Keys that only share
+    modifiers (Ctrl + Alt and Ctrl + Alt + Space) are told apart elsewhere.
+    """
+    if not a or not b:
+        return False
+    mods_a, trigger_a = _parse_hotkey(a)
+    mods_b, trigger_b = _parse_hotkey(b)
+    if trigger_a is None and trigger_b is None:
+        return mods_a == mods_b
+    if trigger_a != trigger_b:
+        return False
+    return mods_a <= mods_b or mods_b <= mods_a
+
+
+class HotkeySet:
+    """The push-to-talk and press-to-start listeners, run as one.
+
+    Either may be None: a key the user turned off gets no listener.
+    """
+
+    def __init__(self, hold: HotkeyListener | None,
+                 toggle: HotkeyListener | None) -> None:
+        self.hold = hold
+        self.toggle = toggle
+
+    def _listeners(self):
+        return [x for x in (self.hold, self.toggle) if x is not None]
+
+    def start(self) -> None:
+        for listener in self._listeners():
+            listener.start()
+
+    def stop(self) -> None:
+        for listener in self._listeners():
+            listener.stop()

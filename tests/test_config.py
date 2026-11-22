@@ -210,3 +210,35 @@ class TestARetiredCleanupModelIsMigrated:
         cfg.load()
 
         assert cfg.get("llm_model") == "some/custom-model"
+
+
+class TestTwoShortcuts:
+    """Push-to-talk (`hotkey`) and press-to-start (`toggle_hotkey`) are two
+    keys. The old single key plus `activation_mode` is migrated on load."""
+
+    def _load(self, tmp_path, saved=None):
+        path = tmp_path / "config.json"
+        if saved is not None:
+            path.write_text(json.dumps(saved), encoding="utf-8")
+        cfg = Config(config_path=str(path))
+        cfg.load()
+        return cfg
+
+    def test_toggle_hotkey_defaults_to_off(self, tmp_path):
+        cfg = self._load(tmp_path)
+        assert cfg.get("toggle_hotkey") == ""
+        assert cfg.get("hotkey") == "<ctrl>+<shift>+space"
+
+    def test_a_toggle_user_keeps_their_key_behaving_the_same(self, tmp_path):
+        cfg = self._load(tmp_path, {"hotkey": "k", "activation_mode": "toggle"})
+        assert cfg.get("toggle_hotkey") == "k"
+        assert cfg.get("hotkey") == ""
+        assert cfg.get("activation_mode") is None
+
+    def test_a_hold_user_is_unchanged(self, tmp_path):
+        cfg = self._load(
+            tmp_path, {"hotkey": "<ctrl>+<alt>", "activation_mode": "hold"}
+        )
+        assert cfg.get("hotkey") == "<ctrl>+<alt>"
+        assert cfg.get("toggle_hotkey") == ""
+        assert cfg.get("activation_mode") is None

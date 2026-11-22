@@ -27,7 +27,7 @@ from PyQt6.QtWidgets import (
 )
 
 from .icons import icon as load_icon
-from .keys import pretty_hotkey
+from .keys import dictation_shortcut
 from .panes.widgets import ChoiceRow
 from .theme import current_palette
 
@@ -387,16 +387,22 @@ class FirstRunWindow(QWidget):
         self._refresh_try_hint()
 
     def _refresh_try_hint(self) -> None:
-        shortcut = pretty_hotkey(self.ctx.config.get("hotkey", ""))
+        shortcut, how = dictation_shortcut(self.ctx.config)
         if self._dictation:
             self._try_hint.setText(
                 "That is what Voxel heard. From now on it goes wherever your "
                 "cursor is."
             )
+        elif not shortcut:
+            self._try_hint.setText("Waiting for you.")
+        elif how == "toggle":
+            self._try_hint.setText(
+                "Waiting for you. Press %s, say anything, then press it again."
+                % shortcut
+            )
         else:
             self._try_hint.setText(
                 "Waiting for you. Hold %s and say anything." % shortcut
-                if shortcut else "Waiting for you."
             )
 
     # ------------------------------------------------------------------

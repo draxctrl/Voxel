@@ -138,6 +138,11 @@ class TestToggleActivationState:
         app._overlay = MagicMock()
         app._max_record_timer = None
         app._recording_start_time = time.time()
+        # Set in __init__, which __new__ skips.
+        import threading
+        app._recording_lock = threading.RLock()
+        app._recording_source = None
+        app._finish_pending = False
         return app
 
     def _cleanup(self, app):
@@ -171,10 +176,11 @@ class TestToggleActivationState:
             self._cleanup(app)
 
 
-class TestActivationModeConfig:
-    def test_defaults_to_hold(self):
+class TestShortcutConfig:
+    def test_the_press_to_start_key_starts_off(self):
         from src.config import DEFAULT_CONFIG
-        assert DEFAULT_CONFIG["activation_mode"] == "hold"
+        assert DEFAULT_CONFIG["toggle_hotkey"] == ""
+        assert "activation_mode" not in DEFAULT_CONFIG
 
 
 class TestVoxelAppMethodsResolve:

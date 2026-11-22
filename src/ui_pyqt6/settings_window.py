@@ -12,7 +12,7 @@ from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import QGuiApplication, QIcon
 from PyQt6.QtWidgets import QHBoxLayout, QStackedWidget, QWidget
 
-from .keys import pretty_hotkey
+from .keys import dictation_shortcut
 from .nav_rail import LOGO_SIZE, NavRail, _logo_path
 from .panes import Pane, PaneContext, all_panes
 from .panes.widgets import repaint_with
@@ -119,7 +119,7 @@ class SettingsWindow(QWidget):
     def set_status(self, state: str) -> None:
         """Mirror the app's state in the rail footer."""
         self._state = state
-        shortcut = pretty_hotkey(self.ctx.config.get("hotkey", ""))
+        shortcut, _how = dictation_shortcut(self.ctx.config)
         self._rail.set_status(state, shortcut)
 
     # ------------------------------------------------------------------

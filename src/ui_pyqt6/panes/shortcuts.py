@@ -1,4 +1,7 @@
-"""Shortcuts: the keys you hold to talk, and how holding them behaves."""
+"""Shortcuts: a key you hold to talk, and a key you tap to start and stop.
+
+Both are live at once. Either can be turned off, but not both.
+"""
 from __future__ import annotations
 
 import logging
@@ -12,33 +15,23 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
+from src.hotkey_listener import hotkeys_clash
+
 from ..keys import pretty_hotkey
 from . import Pane, PaneContext
-from .widgets import pane_surface_qss, repaint_with, ChoiceRow, PaneHeader, pane_body
+from .widgets import pane_surface_qss, repaint_with, PaneHeader, pane_body
 
 logger = logging.getLogger(__name__)
 
-MODE_IDS = ("hold", "toggle")
-
-_MODES = {
-    "hold": ("Hold to talk", "Hold the keys down while you speak"),
-    "toggle": (
+#: Config key -> (row title, row description, the key's name in a warning).
+_KEYS = {
+    "hotkey": ("Push to talk", "Hold these keys and speak", "push to talk"),
+    "toggle_hotkey": (
         "Press to start, press to stop",
         "Tap once to begin, tap again when you are done",
+        "press to start",
     ),
 }
-
-
-def is_modifier_only(hotkey: str) -> bool:
-    """True when the combo is modifiers alone, with no ordinary key."""
-    from src.hotkey_listener import HotkeyListener
-
-    try:
-        return HotkeyListener(
-            hotkey_str=hotkey, on_press=lambda: None, on_release=lambda: None
-        ).is_modifier_only
-    except Exception:
-        return False
 
 
 class _ShortcutRow(QFrame):
@@ -72,6 +65,10 @@ class _ShortcutRow(QFrame):
         self.button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.button.setFixedHeight(28)
         layout.addWidget(self.button, 0, Qt.AlignmentFlag.AlignVCenter)
+        self.off_button = QPushButton("Turn off")
+        self.off_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.off_button.setFixedHeight(28)
+        layout.addWidget(self.off_button, 0, Qt.AlignmentFlag.AlignVCenter)
 
     def restyle(self, p: dict) -> None:
         self.setStyleSheet(
@@ -89,12 +86,14 @@ class _ShortcutRow(QFrame):
             "color: {text}; font-size: 13px; font-weight: 600;"
             " background: transparent;".format(**p)
         )
-        self.button.setStyleSheet(
+        button_qss = (
             "QPushButton {{ color: {text}; background-color: {card_alt};"
             " border: 1px solid {row_border}; border-radius: 7px;"
             " font-size: 12px; padding: 4px 14px; }}"
             "QPushButton:hover {{ border-color: {accent}; }}".format(**p)
         )
+        self.button.setStyleSheet(button_qss)
+        self.off_button.setStyleSheet(button_qss)
 
 
 class ShortcutsPane(Pane):
@@ -104,14 +103,12 @@ class ShortcutsPane(Pane):
     # No undo shortcut: it sent a blind Ctrl+Z to whatever had focus and
     # was removed from Voxel. A row for it would capture a combination
     # nothing listens for.
-    OWNS = frozenset({"hotkey", "activation_mode"})
-
-    MODE_IDS = MODE_IDS
+    OWNS = frozenset(_KEYS)
 
     def __init__(self, ctx: PaneContext, parent=None) -> None:
         super().__init__(ctx, parent)
         self._warning = ""
-        self._mode_rows: dict[str, ChoiceRow] = {}
+        self._rows: dict[str, _ShortcutRow] = {}
 
         _area, layout = pane_body(self)
 
@@ -124,22 +121,13 @@ class ShortcutsPane(Pane):
         self._warning_label.setVisible(False)
         layout.addWidget(self._warning_label)
 
-        self._hotkey_row = _ShortcutRow(
-            "Push to talk", "Hold these keys and speak"
-        )
-        self._hotkey_row.button.clicked.connect(self._capture_hotkey)
-        layout.addWidget(self._hotkey_row)
-
-        layout.addSpacing(10)
-        self._mode_header = QLabel("How it activates")
-        self._mode_header.setObjectName("section_heading")
-        layout.addWidget(self._mode_header)
-
-        for mode_id in MODE_IDS:
-            title, subtitle = _MODES[mode_id]
-            row = ChoiceRow(mode_id, title, subtitle, self)
-            row.clicked.connect(self.choose_mode)
-            self._mode_rows[mode_id] = row
+        for index, (key, (title, description, _name)) in enumerate(_KEYS.items()):
+            if index:
+                layout.addSpacing(8)
+            row = _ShortcutRow(title, description)
+            row.button.clicked.connect(lambda _=False, k=key: self._capture(k))
+            row.off_button.clicked.connect(lambda _=False, k=key: self.turn_off(k))
+            self._rows[key] = row
             layout.addWidget(row)
 
         layout.addStretch(1)
@@ -147,56 +135,47 @@ class ShortcutsPane(Pane):
 
     # ------------------------------------------------------------------
 
-    def mode_ids(self) -> tuple[str, ...]:
-        return MODE_IDS
-
-    def mode_titles(self) -> dict[str, str]:
-        return {k: v[0] for k, v in _MODES.items()}
-
-    def selected_mode(self) -> str:
-        mode = self.ctx.config.get("activation_mode", "hold")
-        return mode if mode in MODE_IDS else "hold"
-
-    def hotkey_text(self) -> str:
-        return pretty_hotkey(self.ctx.config.get("hotkey", ""))
+    def key_text(self, key: str) -> str:
+        return pretty_hotkey(self.ctx.config.get(key, "")) or "Not set"
 
     def warning_text(self) -> str:
         return self._warning
 
+    @staticmethod
+    def _other(key: str) -> str:
+        return "toggle_hotkey" if key == "hotkey" else "hotkey"
+
     # ------------------------------------------------------------------
 
-    def choose_mode(self, mode_id: str) -> None:
-        """Apply an activation mode, refusing one the hotkey cannot do."""
-        if mode_id not in MODE_IDS:
+    def set_key(self, key: str, combo: str) -> None:
+        """Apply a captured combo to one row. An empty capture is no choice."""
+        if key not in _KEYS or not combo:
             return
-        hotkey = self.ctx.config.get("hotkey", "")
-        if mode_id == "toggle" and is_modifier_only(hotkey):
+        other = self._other(key)
+        if hotkeys_clash(combo, self.ctx.config.get(other, "")):
             self._set_warning(
-                "%s cannot toggle on its own - every press of those keys "
-                "anywhere would start or stop recording. Add a normal key "
-                "(Ctrl + Shift + Space, say) and try again."
-                % (pretty_hotkey(hotkey) or "That shortcut")
+                "%s would also set off your %s key (%s). Pick a different one."
+                % (pretty_hotkey(combo), _KEYS[other][2],
+                   pretty_hotkey(self.ctx.config.get(other, "")))
             )
             self.refresh()
             return
         self._set_warning("")
-        self.ctx.apply("activation_mode", mode_id)
+        self.ctx.apply(key, combo)
         self.refresh()
 
-    def set_hotkey(self, hotkey: str) -> None:
-        """Apply a captured combo. An empty capture is not a choice."""
-        if not hotkey:
+    def turn_off(self, key: str) -> None:
+        """Turn one key off, unless it is the only one left."""
+        if key not in _KEYS:
             return
-        if self.selected_mode() == "toggle" and is_modifier_only(hotkey):
+        if not self.ctx.config.get(self._other(key), ""):
             self._set_warning(
-                "%s cannot toggle on its own. Voxel has kept your previous "
-                "shortcut; add a normal key and try again."
-                % pretty_hotkey(hotkey)
+                "Keep at least one shortcut, or Voxel has no way to start."
             )
             self.refresh()
             return
         self._set_warning("")
-        self.ctx.apply("hotkey", hotkey)
+        self.ctx.apply(key, "")
         self.refresh()
 
     def _set_warning(self, text: str) -> None:
@@ -206,29 +185,26 @@ class ShortcutsPane(Pane):
 
     # ------------------------------------------------------------------
 
-    def _capture_hotkey(self) -> None:
-        self._capture(self.set_hotkey, self._hotkey_row)
-
-    def _capture(self, apply_to, row: _ShortcutRow) -> None:
-        """Listen for one key combination and hand it to `apply_to`."""
+    def _capture(self, key: str) -> None:
+        """Listen for one key combination and apply it to `key`."""
         from .hotkey_capture import capture_hotkey
 
+        row = self._rows[key]
         row.button.setText("Press…")
-        capture_hotkey(
-            lambda combo: self._finish_capture(apply_to, row, combo)
-        )
+        capture_hotkey(lambda combo: self._finish_capture(key, combo))
 
-    def _finish_capture(self, apply_to, row: _ShortcutRow, combo: str) -> None:
-        row.button.setText("Change")
-        apply_to(combo)
+    def _finish_capture(self, key: str, combo: str) -> None:
+        self._rows[key].button.setText("Change")
+        self.set_key(key, combo)
 
     # ------------------------------------------------------------------
 
     def refresh(self) -> None:
-        self._hotkey_row.value.setText(self.hotkey_text() or "Not set")
-        mode = self.selected_mode()
-        for mode_id, row in self._mode_rows.items():
-            row.set_selected(mode_id == mode)
+        for key, row in self._rows.items():
+            is_set = bool(self.ctx.config.get(key, ""))
+            row.value.setText(self.key_text(key))
+            row.button.setText("Change" if is_set else "Set")
+            row.off_button.setVisible(is_set)
 
     def restyle(self, palette: dict) -> None:
         self._palette = dict(palette)
@@ -239,10 +215,5 @@ class ShortcutsPane(Pane):
                 **self._palette
             )
         )
-        self._mode_header.setStyleSheet(
-            "color: {faint}; font-size: 11px; font-weight: 700;"
-            " letter-spacing: 0.8px; background: transparent;".format(**self._palette)
-        )
-        self._hotkey_row.restyle(self._palette)
-        for row in self._mode_rows.values():
+        for row in self._rows.values():
             row.restyle(self._palette)

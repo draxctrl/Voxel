@@ -22,7 +22,7 @@ from src.mic_recorder import MicRecorder
 from src.transcriber import Transcriber
 from src.text_cleaner import TextCleaner
 from src.text_injector import TextInjector
-from src.hotkey_listener import HotkeyListener
+from src.hotkey_listener import HotkeyListener, HotkeySet
 from src import taskbar_identity
 from src.tray_app import TrayApp
 from src.history import HistoryStore
@@ -34,7 +34,7 @@ from src.ui_pyqt6.recording_overlay import RecordingOverlay
 from src.ui_pyqt6.recording_styles import DEFAULT_STYLE
 from src.ui_pyqt6.first_run import FirstRunWindow, needs_first_run
 from src.ui_pyqt6.splash import SplashScreen
-from src.ui_pyqt6.keys import pretty_hotkey
+from src.ui_pyqt6.keys import dictation_shortcut
 from src.ui_pyqt6.settings_window import SettingsWindow
 from src.ui_pyqt6.panes import PaneContext
 
@@ -147,7 +147,17 @@ class VoxelApp:
         )
 
         # Hotkey listeners
-        self._hotkey_listener: HotkeyListener | None = None
+        self._hotkey_listener: HotkeySet | None = None
+        #: Which key started the running recording: "hold" or "toggle".
+        self._recording_source: str | None = None
+        #: Push-to-talk went down during a press-to-start recording; it
+        #: finishes that recording when it comes back up - unless another
+        #: key interrupts it first (it was the start of a longer shortcut).
+        self._finish_pending = False
+        #: The two key listeners and the max-duration timer each run on
+        #: their own thread. Every start/stop/cancel decision is made under
+        #: this lock so they cannot interleave.
+        self._recording_lock = threading.RLock()
         self._recording_start_time: float = 0.0
         self._max_record_timer: threading.Timer | None = None
         self._running = True
@@ -166,7 +176,7 @@ class VoxelApp:
         )
         # The splash names the user's own shortcut, not the default.
         self._splash = SplashScreen(
-            shortcut=pretty_hotkey(self._config.get("hotkey", ""))
+            shortcut=dictation_shortcut(self._config)[0]
         )
 
     def _init_groq(self) -> bool:
@@ -192,16 +202,26 @@ class VoxelApp:
         if self._hotkey_listener:
             self._hotkey_listener.stop()
 
-        hotkey = self._config.get("hotkey", "<ctrl>+<shift>+space")
-        activation_mode = self._config.get("activation_mode", "hold")
-        self._hotkey_listener = HotkeyListener(
-            hotkey_str=hotkey,
-            on_press=self._on_hotkey_trigger if activation_mode == "toggle"
-            else self._on_hotkey_press,
+        # Push-to-talk and press-to-start are two keys, both live at once.
+        # An empty key is one the user turned off and gets no listener.
+        hold_key = self._config.get("hotkey", "")
+        toggle_key = self._config.get("toggle_hotkey", "")
+        hold = HotkeyListener(
+            hotkey_str=hold_key,
+            on_press=self._on_hotkey_press,
+            on_release=self._on_hold_release,
+            on_cancel=self._cancel_hold_recording,
+            on_interrupt=self._interrupt_hold,
+            activation_mode="hold",
+        ) if hold_key else None
+        toggle = HotkeyListener(
+            hotkey_str=toggle_key,
+            on_press=self._on_hotkey_trigger,
             on_release=self._on_hotkey_release,
             on_cancel=self._cancel_recording,
-            activation_mode=activation_mode,
-        )
+            activation_mode="toggle",
+        ) if toggle_key else None
+        self._hotkey_listener = HotkeySet(hold, toggle)
         self._hotkey_listener.start()
 
     def _on_hotkey_trigger(self) -> None:
@@ -212,20 +232,55 @@ class VoxelApp:
         the listener's knowledge — can never leave the next press reading as a
         'stop' when nothing is recording.
         """
-        if self._recorder.is_recording:
-            self._on_hotkey_release()
-        else:
-            self._on_hotkey_press()
+        with self._recording_lock:
+            self._finish_pending = False
+            if self._recorder.is_recording and self._recording_source == "hold":
+                # The keys overlap (Ctrl + Alt to hold, Ctrl + Alt + Space to
+                # tap): the push-to-talk recording began a split second ago on
+                # the way to this key. Drop it and start the one they meant.
+                self._cancel_recording()
+                self._start_recording("toggle")
+            elif self._recorder.is_recording:
+                self._finish_recording()
+            else:
+                self._start_recording("toggle")
 
     def _on_hotkey_press(self) -> None:
-        if self._recorder.is_recording:
-            # A recording is already running, so this press cannot be a start.
-            # It is the user pressing the key again to get out of a recording
-            # that did not stop when they let go.
-            logger.info("Hotkey pressed while recording — cancelling")
-            self._cancel_recording()
-            return
+        with self._recording_lock:
+            if self._recorder.is_recording and self._recording_source == "toggle":
+                # Push-to-talk during a press-to-start recording ends it and
+                # keeps the words - once the key comes up (_on_hold_release),
+                # so Ctrl + Alt on its way to Ctrl + Alt + Space does not.
+                self._finish_pending = True
+                return
+            if self._recorder.is_recording:
+                # A recording is already running, so this press cannot be a
+                # start. It is the user pressing the key again to get out of a
+                # recording that did not stop when they let go.
+                logger.info("Hotkey pressed while recording — cancelling")
+                self._cancel_recording()
+                return
+            self._start_recording("hold")
 
+    def _on_hold_release(self) -> None:
+        """Push-to-talk came up after a real hold."""
+        with self._recording_lock:
+            if self._finish_pending or self._recording_source == "hold":
+                self._finish_pending = False
+                self._finish_recording()
+
+    def _interrupt_hold(self) -> None:
+        """Another key was pressed while push-to-talk was held: a shortcut."""
+        with self._recording_lock:
+            if self._finish_pending:
+                self._finish_pending = False
+                return
+            if self._recording_source == "hold":
+                self._cancel_recording()
+
+    def _start_recording(self, source: str) -> None:
+        """Begin a dictation; `source` is the key kind that started it."""
+        self._recording_source = source
         # Capture target window/app BEFORE showing overlay (otherwise overlay = foreground)
         self._target_is_desktop = self._injector.is_desktop_focused()
         self._target_app = self._app_detector.get_active_app()
@@ -236,9 +291,34 @@ class VoxelApp:
         self._set_state("recording")
         self._overlay.show_recording()
 
-        self._max_record_timer = threading.Timer(MAX_RECORDING_DURATION, self._on_hotkey_release)
-        self._max_record_timer.daemon = True
-        self._max_record_timer.start()
+        timer = threading.Timer(
+            MAX_RECORDING_DURATION, lambda: self._max_duration_reached(timer)
+        )
+        timer.daemon = True
+        self._max_record_timer = timer
+        timer.start()
+
+    def _max_duration_reached(self, timer) -> None:
+        """Auto-stop - only for the recording this timer was started for."""
+        with self._recording_lock:
+            if timer is not self._max_record_timer:
+                return
+            self._finish_recording()
+
+    def _cancel_hold_recording(self) -> None:
+        """Push-to-talk was let go too quickly to count as a hold.
+
+        If it was ending a press-to-start recording, a quick tap is still
+        a finish. Otherwise it only ever cancels its own recording: the two
+        keys are heard on separate threads, so this can arrive just after
+        the press-to-start key has begun a recording of its own.
+        """
+        with self._recording_lock:
+            if self._finish_pending:
+                self._finish_pending = False
+                self._finish_recording()
+            elif self._recording_source == "hold":
+                self._cancel_recording()
 
     def _cancel_recording(self) -> None:
         """End a recording and throw the audio away.
@@ -247,6 +327,11 @@ class VoxelApp:
         presses the key again to get out of a recording that is still running.
         Deliberately silent: there is nothing to confirm.
         """
+        with self._recording_lock:
+            self._finish_pending = False
+            self._cancel_recording_locked()
+
+    def _cancel_recording_locked(self) -> None:
         if self._max_record_timer:
             self._max_record_timer.cancel()
             self._max_record_timer = None
@@ -263,6 +348,16 @@ class VoxelApp:
         logger.info("Recording cancelled")
 
     def _on_hotkey_release(self) -> None:
+        with self._recording_lock:
+            self._finish_recording()
+
+    def _finish_recording(self) -> None:
+        """Stop the running recording and type what was said."""
+        with self._recording_lock:
+            self._finish_pending = False
+            self._finish_recording_locked()
+
+    def _finish_recording_locked(self) -> None:
         if self._max_record_timer:
             self._max_record_timer.cancel()
             self._max_record_timer = None
@@ -566,7 +661,7 @@ class VoxelApp:
     #: Settings that need the audio stream reopened.
     _MIC_KEYS = frozenset({"mic_device_name", "mic_device"})
     #: Settings the global hotkey listener is built from.
-    _HOTKEY_KEYS = frozenset({"hotkey", "activation_mode"})
+    _HOTKEY_KEYS = frozenset({"hotkey", "toggle_hotkey"})
     #: Settings the text injector is built from.
     _INJECTOR_KEYS = frozenset({"mute_sound", "always_copy"})
     #: Settings that change which model or key the cleaner talks to.
@@ -707,7 +802,11 @@ class VoxelApp:
 
     def _startup_finish(self) -> None:
         self._report_mic_fallback()
-        self._splash.set_status("Ready! Hold Ctrl+Shift+Space to dictate")
+        shortcut, how = dictation_shortcut(self._config)
+        self._splash.set_status(
+            "Ready! %s %s to dictate" % ("Press" if how == "toggle" else "Hold", shortcut)
+            if shortcut else "Ready!"
+        )
         QTimer.singleShot(400, self._finish_and_show_taskbar)
 
     def _finish_and_show_taskbar(self) -> None:

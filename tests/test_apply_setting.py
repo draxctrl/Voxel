@@ -81,9 +81,9 @@ class TestOnlyWhatChangedIsRestarted:
         app.apply_setting("mic_device", 3)
         assert app._hotkey_listener is before
 
-    def test_the_activation_mode_restarts_the_listener(self, app):
+    def test_the_toggle_hotkey_restarts_the_listener(self, app):
         before = app._hotkey_listener
-        app.apply_setting("activation_mode", "toggle")
+        app.apply_setting("toggle_hotkey", "k")
         assert app._hotkey_listener is not before
 
     def test_the_recording_style_reaches_the_badge(self, app):

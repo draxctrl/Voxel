@@ -31,3 +31,18 @@ def pretty_hotkey(raw: str | None) -> str:
             continue
         parts.append(_NAMES.get(piece.lower(), piece.upper() if len(piece) == 1 else piece.title()))
     return " + ".join(parts)
+
+
+def dictation_shortcut(config) -> tuple[str, str]:
+    """The one key to name on screen, and how it is used.
+
+    Push-to-talk if it is set, otherwise the press-to-start key:
+    `("Ctrl + Alt", "hold")`, `("K", "toggle")`, or `("", "hold")`.
+    """
+    hold = pretty_hotkey(config.get("hotkey", ""))
+    if hold:
+        return hold, "hold"
+    toggle = pretty_hotkey(config.get("toggle_hotkey", ""))
+    if toggle:
+        return toggle, "toggle"
+    return "", "hold"

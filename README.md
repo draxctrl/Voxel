@@ -96,10 +96,10 @@ The result: you speak naturally, and clean text appears. **No editing needed.**
 ## ⚡ How it works
 
 ```
-1. 🟢 Hold your hotkey (default: Ctrl+Shift+Space)
-   (or tap once to start if you switch Activation to toggle)
+1. 🟢 Hold your push-to-talk key (default: Ctrl+Shift+Space)
+   (or tap your press-to-start key, if you set one, to start hands-free)
 2. 🎙️ Speak naturally - say "um" and "like" all you want
-3. 🔴 Release the hotkey (or tap again in toggle mode)
+3. 🔴 Let go (or tap the press-to-start key again)
 4. ✅ Clean, polished text is pasted into whatever app you're using
 ```
 
@@ -212,7 +212,7 @@ in that one window:
 | 🗣️ **Voice commands** | Trigger phrases that expand into templates |
 | 🌍 **Language** | Auto-detect, or pick from 9 languages |
 | 🎤 **Microphone** | Choose your device and watch its level move as you talk |
-| ⌨️ **Shortcuts** | Your hotkey, and hold-to-talk versus press-to-start |
+| ⌨️ **Shortcuts** | A key to hold and talk, and a key to tap to start and stop - both work at once |
 | 🎨 **Appearance** | Light or dark, and what Voxel shows while you are talking |
 | 🕓 **History** | Everything you have dictated, searchable |
 | 📊 **Stats** | Words dictated and time saved |

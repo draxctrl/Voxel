@@ -29,8 +29,11 @@ DEFAULT_CONFIG = {
     # different mic. mic_device is kept only as a fallback hint for old configs.
     "mic_device_name": None,
     "mic_device": None,
-    # "hold" = press and hold to record; "toggle" = press to start, press to stop.
-    "activation_mode": "hold",
+    # `hotkey` is held to talk; `toggle_hotkey` is tapped to start and tapped
+    # again to stop. Both work at once. An empty string means turned off.
+    # (They replaced one key plus an "activation_mode" - see
+    # _migrate_activation_mode.)
+    "toggle_hotkey": "",
     # Which recording display the overlay uses: orb, waveform or island.
     "recording_style": "orb",
     "offline_mode": False,
@@ -83,6 +86,7 @@ class Config:
                 logger.warning("Failed to load config from %s: %s", self._path, e)
         self._migrate_profile_ids()
         self._migrate_llm_model()
+        self._migrate_activation_mode()
 
     def _migrate_profile_ids(self) -> None:
         """Point old mode ids at their replacements after consolidation.
@@ -114,6 +118,19 @@ class Config:
             logger.info("Cleanup model '%s' is retired -> '%s'",
                         model, DEFAULT_CONFIG["llm_model"])
             self._data["llm_model"] = DEFAULT_CONFIG["llm_model"]
+
+    def _migrate_activation_mode(self) -> None:
+        """Turn the old one-key-plus-mode setting into two keys.
+
+        Someone who chose "press to start, press to stop" had their only
+        key behave that way, so it moves to `toggle_hotkey` and push-to-talk
+        is left off: the key they know keeps doing what it did.
+        """
+        mode = self._data.pop("activation_mode", None)
+        if mode == "toggle" and not self._data.get("toggle_hotkey"):
+            logger.info("Moved the press-to-start key to toggle_hotkey")
+            self._data["toggle_hotkey"] = self._data.get("hotkey", "")
+            self._data["hotkey"] = ""
 
     def save(self) -> None:
         os.makedirs(os.path.dirname(self._path), exist_ok=True)

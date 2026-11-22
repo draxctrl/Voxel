@@ -216,3 +216,20 @@ class TestTheConfigKnowsTheFlag:
         from src.config import DEFAULT_CONFIG
 
         assert DEFAULT_CONFIG.get("onboarding_complete") is False
+
+
+class TestTheTryScreenNamesTheRightKey:
+    def test_hold_wording_for_push_to_talk(self, qapp, ctx):
+        ctx.config.set("hotkey", "<ctrl>+<alt>")
+        win = FirstRunWindow(ctx)
+        win._refresh_try_hint()
+        assert win._try_hint.text() == "Waiting for you. Hold Ctrl + Alt and say anything."
+
+    def test_press_wording_when_only_the_press_to_start_key_is_set(self, qapp, ctx):
+        ctx.config.set("hotkey", "")
+        ctx.config.set("toggle_hotkey", "k")
+        win = FirstRunWindow(ctx)
+        win._refresh_try_hint()
+        assert win._try_hint.text() == (
+            "Waiting for you. Press K, say anything, then press it again."
+        )

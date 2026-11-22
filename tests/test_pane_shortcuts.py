@@ -1,4 +1,4 @@
-"""The Shortcuts pane: the push-to-talk key, undo, and how it activates."""
+"""The Shortcuts pane: a push-to-talk key and a press-to-start key, both live."""
 import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -6,12 +6,23 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from src.ui_pyqt6.panes.shortcuts import ShortcutsPane
 
 
+def _pane(ctx, hotkey="<ctrl>+<alt>", toggle_hotkey=""):
+    ctx.config.set("hotkey", hotkey)
+    ctx.config.set("toggle_hotkey", toggle_hotkey)
+    pane = ShortcutsPane(ctx)
+    pane.refresh()
+    return pane
+
+
 class TestTheShortcutsAreShownAsWords:
-    def test_the_saved_hotkey_is_readable(self, qapp, ctx):
-        ctx.config.set("hotkey", "<ctrl>+<shift>+space")
-        pane = ShortcutsPane(ctx)
-        pane.refresh()
-        assert pane.hotkey_text() == "Ctrl + Shift + Space"
+    def test_both_keys_are_readable(self, qapp, ctx):
+        pane = _pane(ctx, "<ctrl>+<shift>+space", "k")
+        assert pane.key_text("hotkey") == "Ctrl + Shift + Space"
+        assert pane.key_text("toggle_hotkey") == "K"
+
+    def test_an_off_key_says_not_set(self, qapp, ctx):
+        pane = _pane(ctx, "<ctrl>+<alt>", "")
+        assert pane.key_text("toggle_hotkey") == "Not set"
 
     def test_there_is_no_undo_shortcut_row(self, qapp, ctx):
         """Undo sent a blind Ctrl+Z to whatever had focus and was removed
@@ -19,84 +30,76 @@ class TestTheShortcutsAreShownAsWords:
         feature that is not there."""
         assert not hasattr(ShortcutsPane(ctx), "_undo_row")
 
-
-class TestTheActivationMode:
-    def test_hold_and_toggle_are_the_two_choices(self, qapp, ctx):
-        pane = ShortcutsPane(ctx)
-        assert pane.mode_ids() == ("hold", "toggle")
-
-    def test_the_copy_is_plain_english(self, qapp, ctx):
-        titles = ShortcutsPane(ctx).mode_titles()
-        assert titles["hold"] == "Hold to talk"
-        assert titles["toggle"] == "Press to start, press to stop"
-
-    def test_hold_is_what_an_unconfigured_user_gets(self, qapp, ctx):
-        pane = ShortcutsPane(ctx)
-        pane.refresh()
-        assert pane.selected_mode() == "hold"
-
-    def test_choosing_toggle_applies_it(self, qapp, ctx):
-        ctx.config.set("hotkey", "<ctrl>+<shift>+space")
-        pane = ShortcutsPane(ctx)
-        pane.refresh()
-        pane.choose_mode("toggle")
-        assert ("activation_mode", "toggle") in ctx.applied
+    def test_there_is_no_mode_choice_any_more(self, qapp, ctx):
+        """Both keys are always live, so "How it activates" is gone."""
+        assert not hasattr(ShortcutsPane(ctx), "_mode_rows")
 
 
-class TestAModifierOnlyHotkeyIsRejectedForToggleMode:
-    """Ctrl+Shift alone cannot toggle: every Ctrl+Shift press anywhere would
-    flip recording on and off. The old window caught this on save; with no
-    save button it has to be caught at the moment of choosing."""
-
-    def test_it_explains_rather_than_silently_failing(self, qapp, ctx):
-        ctx.config.set("hotkey", "<ctrl>+<shift>")
-        pane = ShortcutsPane(ctx)
-        pane.refresh()
-        pane.choose_mode("toggle")
-        assert pane.warning_text() != ""
-        assert "toggle" in pane.warning_text().lower()
-
-    def test_the_mode_is_not_applied(self, qapp, ctx):
-        ctx.config.set("hotkey", "<ctrl>+<shift>")
-        pane = ShortcutsPane(ctx)
-        pane.refresh()
-        pane.choose_mode("toggle")
-        assert ctx.applied == []
-        assert pane.selected_mode() == "hold"
-
-    def test_a_normal_combo_toggles_fine(self, qapp, ctx):
-        ctx.config.set("hotkey", "<ctrl>+<shift>+space")
-        pane = ShortcutsPane(ctx)
-        pane.refresh()
-        pane.choose_mode("toggle")
+class TestSettingEachKey:
+    def test_setting_the_press_to_start_key_leaves_push_to_talk_alone(self, qapp, ctx):
+        pane = _pane(ctx, "<ctrl>+<alt>", "")
+        pane.set_key("toggle_hotkey", "k")
+        assert ctx.applied == [("toggle_hotkey", "k")]
+        assert ctx.config.get("hotkey") == "<ctrl>+<alt>"
         assert pane.warning_text() == ""
-        assert ("activation_mode", "toggle") in ctx.applied
 
-    def test_setting_a_modifier_only_hotkey_while_in_toggle_mode_warns(self, qapp, ctx):
-        ctx.config.set("activation_mode", "toggle")
-        ctx.config.set("hotkey", "<ctrl>+<shift>+space")
-        pane = ShortcutsPane(ctx)
-        pane.refresh()
-        pane.set_hotkey("<ctrl>+<alt>")
-        assert pane.warning_text() != ""
-
-
-class TestSettingAHotkey:
-    def test_a_captured_combo_is_applied(self, qapp, ctx):
-        pane = ShortcutsPane(ctx)
-        pane.refresh()
-        pane.set_hotkey("<ctrl>+<alt>+v")
-        assert ("hotkey", "<ctrl>+<alt>+v") in ctx.applied
-        assert pane.hotkey_text() == "Ctrl + Alt + V"
+    def test_setting_push_to_talk(self, qapp, ctx):
+        pane = _pane(ctx, "<ctrl>+<alt>", "k")
+        pane.set_key("hotkey", "<ctrl>+<alt>+v")
+        assert ctx.applied == [("hotkey", "<ctrl>+<alt>+v")]
+        assert pane.key_text("hotkey") == "Ctrl + Alt + V"
 
     def test_an_empty_capture_is_not_saved(self, qapp, ctx):
-        ctx.config.set("hotkey", "<ctrl>+<shift>+space")
-        pane = ShortcutsPane(ctx)
-        pane.refresh()
-        pane.set_hotkey("")
+        pane = _pane(ctx)
+        pane.set_key("toggle_hotkey", "")
         assert ctx.applied == []
+
+    def test_the_same_key_for_both_is_refused(self, qapp, ctx):
+        pane = _pane(ctx, "<ctrl>+<alt>", "")
+        pane.set_key("toggle_hotkey", "<alt>+<ctrl>")
+        assert ctx.applied == []
+        assert pane.warning_text() != ""
+        assert pane.key_text("toggle_hotkey") == "Not set"
+
+    def test_a_good_key_clears_an_old_warning(self, qapp, ctx):
+        pane = _pane(ctx, "<ctrl>+<alt>", "")
+        pane.set_key("toggle_hotkey", "<ctrl>+<alt>")
+        pane.set_key("toggle_hotkey", "k")
+        assert pane.warning_text() == ""
+
+
+class TestTurningAKeyOff:
+    def test_turning_off_the_press_to_start_key(self, qapp, ctx):
+        pane = _pane(ctx, "<ctrl>+<alt>", "k")
+        pane.turn_off("toggle_hotkey")
+        assert ctx.applied == [("toggle_hotkey", "")]
+        assert pane.key_text("toggle_hotkey") == "Not set"
+
+    def test_turning_off_push_to_talk_when_the_other_is_set(self, qapp, ctx):
+        pane = _pane(ctx, "<ctrl>+<alt>", "k")
+        pane.turn_off("hotkey")
+        assert ctx.applied == [("hotkey", "")]
+
+    def test_the_last_key_cannot_be_turned_off(self, qapp, ctx):
+        pane = _pane(ctx, "<ctrl>+<alt>", "")
+        pane.turn_off("hotkey")
+        assert ctx.applied == []
+        assert pane.warning_text() != ""
 
 
 class TestThePaneDeclaresWhatItOwns:
-    def test_it_owns_the_three_shortcut_keys(self):
-        assert ShortcutsPane.OWNS == frozenset({"hotkey", "activation_mode"})
+    def test_it_owns_both_shortcut_keys(self):
+        assert ShortcutsPane.OWNS == frozenset({"hotkey", "toggle_hotkey"})
+
+
+class TestKeysThatOnePressWouldSetOffTogether:
+    def test_ctrl_space_and_ctrl_shift_space_are_refused(self, qapp, ctx):
+        pane = _pane(ctx, "<ctrl>+space", "")
+        pane.set_key("toggle_hotkey", "<ctrl>+<shift>+space")
+        assert ctx.applied == []
+        assert pane.warning_text() != ""
+
+    def test_ctrl_alt_and_ctrl_alt_space_are_allowed(self, qapp, ctx):
+        pane = _pane(ctx, "<ctrl>+<alt>", "")
+        pane.set_key("toggle_hotkey", "<ctrl>+<alt>+space")
+        assert ctx.applied == [("toggle_hotkey", "<ctrl>+<alt>+space")]

@@ -189,6 +189,7 @@ class TestThePressToTalkKeyCanAlsoCancel:
         """The recording is already running, so this press cannot be a start.
         It is the user asking to get out of a recording that did not stop."""
         app._recorder.is_recording = True
+        app._recording_source = "hold"
         app._on_hotkey_press()
 
         app._recorder.stop.assert_called_once()
@@ -208,7 +209,7 @@ class TestThePressToTalkKeyCanAlsoCancel:
         from unittest.mock import patch
         with patch("src.main.HotkeyListener") as listener_cls:
             app._start_hotkey_listener()
-        assert listener_cls.call_args.kwargs["on_cancel"] == app._cancel_recording
+        assert listener_cls.call_args.kwargs["on_cancel"] == app._cancel_hold_recording
 
 
 class TestACleanupFailureDoesNotSwallowTheDictation:
@@ -367,3 +368,138 @@ class TestSettingsChangesGoThroughApplySetting:
         app._build_settings_window()
         app._settings_window.ctx.apply("language", "de")
         assert app._config.get("language") == "de"
+
+
+class TestTwoShortcutsRunSideBySide:
+    """Push-to-talk and press-to-start each get their own listener."""
+
+    def _listeners(self, app, hotkey, toggle_hotkey):
+        app._config.set("hotkey", hotkey)
+        app._config.set("toggle_hotkey", toggle_hotkey)
+        with patch("src.main.HotkeyListener") as listener_cls:
+            app._start_hotkey_listener()
+        return [c.kwargs for c in listener_cls.call_args_list]
+
+    def test_both_keys_get_a_listener(self, app):
+        made = self._listeners(app, "<ctrl>+<alt>", "k")
+        assert len(made) == 2
+        hold = next(k for k in made if k["activation_mode"] == "hold")
+        toggle = next(k for k in made if k["activation_mode"] == "toggle")
+        assert hold["hotkey_str"] == "<ctrl>+<alt>"
+        assert hold["on_press"] == app._on_hotkey_press
+        assert toggle["hotkey_str"] == "k"
+        assert toggle["on_press"] == app._on_hotkey_trigger
+
+    def test_an_off_key_gets_no_listener(self, app):
+        made = self._listeners(app, "<ctrl>+<alt>", "")
+        assert [k["activation_mode"] for k in made] == ["hold"]
+
+    def test_push_to_talk_during_a_toggle_recording_finishes_on_letting_go(self, app):
+        """The words are kept: push-to-talk ends a press-to-start recording
+        and types it - once the key comes up, so a longer shortcut that
+        starts with the same keys can still claim the press."""
+        app._recorder.is_recording = True
+        app._recording_source = "toggle"
+        with patch.object(app, "_finish_recording") as finish,              patch.object(app, "_cancel_recording") as cancel:
+            app._on_hotkey_press()
+            finish.assert_not_called()
+            app._on_hold_release()
+        finish.assert_called_once()
+        cancel.assert_not_called()
+
+    def test_a_quick_push_to_talk_tap_also_finishes_it(self, app):
+        app._recorder.is_recording = True
+        app._recording_source = "toggle"
+        with patch.object(app, "_finish_recording") as finish,              patch.object(app, "_cancel_recording") as cancel:
+            app._on_hotkey_press()
+            app._cancel_hold_recording()
+        finish.assert_called_once()
+        cancel.assert_not_called()
+
+    def test_a_toggle_start_is_remembered_as_toggle(self, app):
+        app._recorder.is_recording = False
+        app._on_hotkey_trigger()
+        assert app._recording_source == "toggle"
+
+    def test_a_hold_start_is_remembered_as_hold(self, app):
+        app._recorder.is_recording = False
+        app._on_hotkey_press()
+        assert app._recording_source == "hold"
+
+
+class TestOverlappingKeys:
+    """Ctrl + Alt to hold and Ctrl + Alt + Space to tap: pressing Space
+    while Ctrl + Alt is down is the tap key, not the end of a dictation."""
+
+    def test_a_tap_during_a_push_to_talk_recording_starts_fresh(self, app):
+        app._recorder.is_recording = True
+        app._recording_source = "hold"
+        with patch.object(app, "_finish_recording") as finish,              patch.object(app, "_start_recording") as start:
+            app._on_hotkey_trigger()
+        finish.assert_not_called()
+        app._recorder.stop.assert_called_once()
+        start.assert_called_once_with("toggle")
+
+    def test_a_late_push_to_talk_cancel_leaves_a_tap_recording_alone(self, app):
+        app._recorder.is_recording = True
+        app._recording_source = "toggle"
+        app._cancel_hold_recording()
+        app._recorder.stop.assert_not_called()
+
+    def test_push_to_talk_cancel_still_cancels_its_own_recording(self, app):
+        app._recorder.is_recording = True
+        app._recording_source = "hold"
+        app._cancel_hold_recording()
+        app._recorder.stop.assert_called_once()
+
+
+class TestStoppingWithOverlappingKeys:
+    """Ctrl + Alt to hold, Ctrl + Alt + Space to tap. A tap recording is
+    running and the user presses Ctrl + Alt + Space to stop it: Ctrl + Alt
+    reaches push-to-talk first, then Space interrupts it and reaches the
+    tap key. One stop, no new recording."""
+
+    def test_ctrl_alt_space_stops_and_does_not_restart(self, app):
+        app._recorder.is_recording = True
+        app._recording_source = "toggle"
+        with patch.object(app, "_finish_recording",
+                          side_effect=lambda: setattr(app._recorder, "is_recording", False)) as finish,              patch.object(app, "_start_recording") as start:
+            app._on_hotkey_press()        # Ctrl + Alt down
+            app._interrupt_hold()          # Space, as push-to-talk hears it
+            app._on_hotkey_trigger()       # Space, as the tap key hears it
+            app._on_hold_release()         # Ctrl + Alt up
+        finish.assert_called_once()
+        start.assert_not_called()
+
+    def test_the_other_thread_order_gives_the_same_result(self, app):
+        app._recorder.is_recording = True
+        app._recording_source = "toggle"
+        with patch.object(app, "_finish_recording",
+                          side_effect=lambda: setattr(app._recorder, "is_recording", False)) as finish,              patch.object(app, "_start_recording") as start:
+            app._on_hotkey_press()
+            app._on_hotkey_trigger()
+            app._interrupt_hold()
+            app._on_hold_release()
+        finish.assert_called_once()
+        start.assert_not_called()
+
+
+class TestOneRecordingDecisionAtATime:
+    def test_the_key_handlers_share_one_lock(self, app):
+        import threading
+        assert isinstance(app._recording_lock, type(threading.RLock()))
+
+    def test_an_old_max_duration_timer_does_not_stop_a_newer_recording(self, app):
+        app._recorder.is_recording = True
+        app._recording_source = "toggle"
+        app._max_record_timer = object()
+        with patch.object(app, "_finish_recording") as finish:
+            app._max_duration_reached(object())
+        finish.assert_not_called()
+
+    def test_the_current_timer_does_stop_it(self, app):
+        app._recorder.is_recording = True
+        timer = app._max_record_timer = MagicMock()
+        with patch.object(app, "_finish_recording") as finish:
+            app._max_duration_reached(timer)
+        finish.assert_called_once()
